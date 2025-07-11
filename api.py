@@ -359,7 +359,7 @@ async def connect_to_websocket_inference(image_b64, model_name):
             return {"error": f"Unknown model: {model_name}. Available models: cx, gy"}
         
         port = MODEL_CONFIGS[model_name]['port']
-        uri = f"ws://{WEBSOCKET_HOST}:{port}"
+        uri = f"ws://{WEBSOCKET_HOST}:{port}"   
         
         async with websockets.connect(uri) as websocket:
             # Send image to WebSocket server
