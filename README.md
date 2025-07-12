@@ -20,14 +20,14 @@ This backend provides authentication, user analysis, and real-time pose inferenc
 
 ## Project Structure
 ```
-app/
+src/
 ├── config/           # App, database, and websocket configs
 ├── controllers/      # Route handlers (auth, analysis, inference)
 ├── models/           # Data models (User, Analysis)
 ├── services/         # WebSocket model servers
 ├── utils/            # Helper functions
 ├── __init__.py       # Flask app factory
-main.py               # App entry point
+app.py               # App entry point
 ```
 
 ---
@@ -41,13 +41,13 @@ pip install -r flask_requirements.txt
 
 **2. Start the Flask REST API:**
 ```bash
-python main.py
+python app.py
 ```
 - Runs on `http://localhost:5000`
 
 **3. Start the WebSocket Model Service:**
 ```bash
-python app/services/websocket_models.py
+python src/services/websocket_models.py
 ```
 - Starts a WebSocket server for each model (CX, GY) on their configured ports.
 
@@ -110,7 +110,7 @@ python app/services/websocket_models.py
 
 ## WebSocket Services
 
-- **Service File:** `app/services/websocket_models.py`
+- **Service File:** `src/services/websocket_models.py`
 - **Purpose:** Serves real-time pose inference for each model (CX, GY) on separate ports.
 - **Authentication:** Requires JWT token (sent in cookies) for each connection.
 - **Message Format:**  
@@ -170,4 +170,4 @@ pip install -r flask_requirements.txt
 
 ---
 
-**For more details, see the code in `app/controllers/`, `app/services/`, and `app/config/`.**
+**For more details, see the code in `src/controllers/`, `src/services/`, and `src/config/`.**
