@@ -56,8 +56,8 @@ class AnalysisController:
                 (user_id,)
             )
             analyses = cursor.fetchall()
-            
-            return [dict(analysis) for analysis in analyses], 200
+            # Convert each analysis dict to Analysis model
+            return [Analysis.from_dict(dict(analysis)).to_dict() for analysis in analyses], 200
             
         except Exception as e:
             return {"error": str(e)}, 500
@@ -81,7 +81,9 @@ class AnalysisController:
             if not analysis_data:
                 return {"error": "Analysis not found"}, 404
 
-            return dict(analysis_data), 200
+            # Convert analysis_data to Analysis model
+            user = Analysis.from_dict(dict(analysis_data))
+            return user.to_dict(), 200
 
         except Exception as e:
             return {"error": str(e)}, 500

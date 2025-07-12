@@ -108,25 +108,6 @@ python app/services/websocket_models.py
 
 ---
 
-### Live Inference
-
-- **Get Available Models:**  
-  `GET /api/models`  
-  **Response:** List of available models and their configs  
-  **Auth:** Requires valid JWT cookie.
-
-- **Live Inference:**  
-  `POST /api/live_inferencing/<model_name>`  
-  **Body:** `{ "image": "base64-encoded-image-string" }`  
-  **Response:** `{ "keypoints": [...], "posture_score": number }`  
-  **Auth:** Requires valid JWT cookie.  
-  **Notes:**  
-    - Available models: `cx`, `gy`  
-    - CX model connects to WebSocket server on port 8891  
-    - GY model connects to WebSocket server on port 8892
-
----
-
 ## WebSocket Services
 
 - **Service File:** `app/services/websocket_models.py`
