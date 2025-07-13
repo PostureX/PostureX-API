@@ -2,10 +2,9 @@ from flask import Blueprint, request, jsonify, make_response
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, unset_jwt_cookies
 from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import timedelta
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from sqlalchemy.exc import IntegrityError
 
-from ..config.database import DatabaseConfig
+from ..config.database import db
 from ..models.user import User
 
 auth_bp = Blueprint('auth', __name__)
@@ -13,68 +12,48 @@ auth_bp = Blueprint('auth', __name__)
 class AuthController:
     """Controller for authentication-related operations"""
     
-    def __init__(self):
-        self.db_config = DatabaseConfig()
-    
-    def get_db_connection(self):
-        """Get database connection"""
-        return self.db_config.get_connection()
-    
     def register_user(self, email, name, password):
         """Register a new user"""
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            
             # Check if user already exists
-            cursor.execute(
-                "SELECT id FROM spfposture.users WHERE email = %s",
-                (email,)
-            )
-            if cursor.fetchone():
+            existing_user = User.query.filter_by(email=email).first()
+            if existing_user:
                 return {"error": "User already exists"}, 400
             
             # Hash password and create user
             password_hash = generate_password_hash(password)
-            cursor.execute(
-                """INSERT INTO spfposture.users (email, name, password) 
-                   VALUES (%s, %s, %s) RETURNING name""",
-                (email, name, password_hash)
+            new_user = User(
+                email=email,
+                name=name,
+                password_hash=password_hash
             )
-            name = cursor.fetchone()[0]
-            conn.commit()
+            
+            db.session.add(new_user)
+            db.session.commit()
             
             return {"message": "User registered successfully", "name": name}, 201
             
+        except IntegrityError:
+            db.session.rollback()
+            return {"error": "User already exists"}, 400
         except Exception as e:
+            db.session.rollback()
             return {"error": str(e)}, 500
-        finally:
-            if 'conn' in locals():
-                conn.close()
     
     def login_user(self, email, password):
         """Authenticate user and create JWT token"""
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
             # Get user by email
-            cursor.execute(
-                "SELECT * FROM spfposture.users WHERE email = %s",
-                (email,)
-            )
-            user_data = cursor.fetchone()
+            user = User.query.filter_by(email=email).first()
             
-            if not user_data or not check_password_hash(user_data['password'], password):
+            if not user or not check_password_hash(user.password_hash, password):
                 return {"error": "Invalid credentials"}, 401
             
             # Create JWT token
             access_token = create_access_token(
-                identity=str(user_data['id']),
+                identity=str(user.id),
                 expires_delta=timedelta(hours=3)
             )
-            
-            user = User.from_dict(user_data)
             
             return {
                 "message": "Login successful",
@@ -84,33 +63,19 @@ class AuthController:
             
         except Exception as e:
             return {"error": str(e)}, 500
-        finally:
-            if 'conn' in locals():
-                conn.close()
     
-    def get_user_profile(self, name):
+    def get_user_profile(self, user_id):
         """Get user profile information"""
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            user = User.query.get(int(user_id))
             
-            cursor.execute(
-                "SELECT name, email, name, created_at FROM spfposture.users WHERE name = %s",
-                (name,)
-            )
-            user_data = cursor.fetchone()
-            
-            if not user_data:
+            if not user:
                 return {"error": "User not found"}, 404
             
-            user = User.from_dict(user_data)
             return {"user": user.to_dict()}, 200
             
         except Exception as e:
             return {"error": str(e)}, 500
-        finally:
-            if 'conn' in locals():
-                conn.close()
 
 # Initialize controller
 auth_controller = AuthController()
@@ -164,6 +129,6 @@ def logout():
 @jwt_required()
 def profile():
     """Get current user's profile"""
-    name = get_jwt_identity()
-    result, status = auth_controller.get_user_profile(name)
+    user_id = get_jwt_identity()
+    result, status = auth_controller.get_user_profile(user_id)
     return jsonify(result), status

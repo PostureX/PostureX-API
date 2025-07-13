@@ -1,4 +1,4 @@
 from .user import User
-from .analysis import Analysis, PoseKeypoint, InferenceResult
+from .analysis import Analysis
 
-__all__ = ['User', 'Analysis', 'PoseKeypoint', 'InferenceResult']
+__all__ = ['User', 'Analysis']
