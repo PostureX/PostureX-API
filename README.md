@@ -15,6 +15,8 @@ This backend provides authentication, user analysis, and real-time pose inferenc
 - [Model Configuration](#model-configuration)
 - [Error Handling](#error-handling)
 - [Dependencies](#dependencies)
+- [Database Migrations](#database-migrations)
+- [Current Models](#current-models)
 
 ---
 
@@ -158,6 +160,65 @@ pip install -r flask_requirements.txt
 - numpy, opencv-python
 - mmpose (for CX model)
 - bcrypt
+
+---
+
+## Database Migrations
+
+**1. Initialize migration repository (first time only):**
+```bash
+flask db init
+```
+
+**2. Create a migration after changing models:**
+```bash
+flask db migrate -m "Describe your change"
+```
+
+**3. Apply migrations to the database:**
+```bash
+flask db upgrade
+```
+
+**4. (Optional) Check migration status/history:**
+```bash
+flask db history
+flask db current
+```
+
+**5. (Optional) Rollback migration:**
+```bash
+flask db downgrade
+```
+
+---
+
+## Current Models
+
+### User Model (`src/models/user.py`)
+```python
+class User(db.Model):
+    __tablename__ = 'users'
+    __table_args__ = {'schema': 'spfposture'}
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    analyses = db.relationship('Analysis', backref='user', lazy=True, cascade='all, delete-orphan')
+```
+
+### Analysis Model (`src/models/analysis.py`)
+```python
+class Analysis(db.Model):
+    __tablename__ = 'analysis'
+    __table_args__ = {'schema': 'spfposture'}
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('spfposture.users.id'), nullable=False)
+    video_url = db.Column(db.Text, nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+```
 
 ---
 
