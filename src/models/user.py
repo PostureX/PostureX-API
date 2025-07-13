@@ -1,15 +1,22 @@
-from dataclasses import dataclass
-from typing import Optional
 from datetime import datetime
+from ..config.database import db
 
-@dataclass
-class User:
+class User(db.Model):
     """User model for authentication and user management"""
-    id: Optional[int] = None
-    email: str = ""
-    name: str = ""
-    password_hash: str = ""
-    created_at: Optional[datetime] = None
+    __tablename__ = 'users'
+    __table_args__ = {'schema': 'spfposture'}
+    
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationship to analyses
+    analyses = db.relationship('Analysis', backref='user', lazy=True, cascade='all, delete-orphan')
+    
+    def __repr__(self):
+        return f'<User {self.email}>'
     
     def to_dict(self):
         """Convert user object to dictionary"""
@@ -23,10 +30,10 @@ class User:
     @classmethod
     def from_dict(cls, data):
         """Create User object from dictionary"""
-        return cls(
-            id=data.get('id'),
-            email=data.get('email', ''),
-            name=data.get('name', ''),
-            password_hash=data.get('password_hash', ''),
-            created_at=data.get('created_at')
-        )
+        user = cls()
+        user.email = data.get('email', '')
+        user.name = data.get('name', '')
+        user.password_hash = data.get('password_hash', '')
+        if data.get('created_at'):
+            user.created_at = data.get('created_at')
+        return user

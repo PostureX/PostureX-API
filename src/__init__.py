@@ -3,8 +3,14 @@ from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 
 from .config.app_config import AppConfig
+from .config.database import db, migrate
 from .controllers import auth_bp, analysis_bp
 from .utils import setup_logging
+from . import cli
+from .config.dev_config import DevConfig
+from .config.production_config import ProductionConfig
+
+app_configuration = DevConfig()
 
 def create_app():
     """Application factory function"""
@@ -20,6 +26,13 @@ def create_app():
     # Initialize extensions
     jwt = JWTManager(app)
     
+    # Initialize SQLAlchemy and Flask-Migrate
+    db.init_app(app)
+    migrate.init_app(app, db)
+    
+    # Register CLI commands
+    cli.init_app(app)
+    
     # Setup CORS with configuration
     cors_config = app_config.get_cors_config()
     CORS(app, 
@@ -28,7 +41,8 @@ def create_app():
          methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
          allow_headers=['Content-Type', 'Authorization'])
     
-    # JWT is already configured via app.config.update above
+    # Import models to ensure they are registered with SQLAlchemy
+    from . import models
     
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/auth')
