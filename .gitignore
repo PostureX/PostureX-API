@@ -1,2 +1,6 @@
 .env
 .migrations/
+__pycache__/
+.venv
+models/
+.vscode/
