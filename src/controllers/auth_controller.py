@@ -4,8 +4,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import timedelta
 from sqlalchemy.exc import IntegrityError
 
-from ..config.database import db
-from ..models.user import User
+from src.config.database import db
+from src.models.user import User
 
 auth_bp = Blueprint('auth', __name__)
 

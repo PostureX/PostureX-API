@@ -1,15 +1,15 @@
 from datetime import datetime
 from typing import Optional, Dict, List
 from dataclasses import dataclass
-from ..config.database import db
+from src.config.database import db, db_config
 
 class Analysis(db.Model):
     """Analysis model for storing analysis results"""
     __tablename__ = 'analysis'
-    __table_args__ = {'schema': 'spfposture'}
+    __table_args__ = {'schema': db_config.schema_name}
     
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('spfposture.users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey(f'{db_config.schema_name}.users.id'), nullable=False)
     video_url = db.Column(db.Text, nullable=False)  # Base64 encoded image or data
     text = db.Column(db.Text, nullable=False)  # JSON string of analysis results
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

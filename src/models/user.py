@@ -1,11 +1,11 @@
 from datetime import datetime
-from ..config.database import db
+from src.config.database import db, db_config
 
 class User(db.Model):
     """User model for authentication and user management"""
     __tablename__ = 'users'
-    __table_args__ = {'schema': 'spfposture'}
-    
+    __table_args__ = {'schema': db_config.schema_name}
+
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
     name = db.Column(db.String(255), nullable=False)

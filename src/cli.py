@@ -1,7 +1,6 @@
 import click
 from flask.cli import with_appcontext
-from .config.database import db
-from .models import User, Analysis
+from src.config.database import db, db_config
 
 @click.command()
 @with_appcontext
@@ -17,9 +16,9 @@ def create_schema():
     from sqlalchemy import text
     
     # Create schema if it doesn't exist
-    db.session.execute(text("CREATE SCHEMA IF NOT EXISTS spfposture"))
+    db.session.execute(text(f"CREATE SCHEMA IF NOT EXISTS {db_config.schema_name}"))
     db.session.commit()
-    click.echo('Created spfposture schema.')
+    click.echo(f'Created {db_config.schema_name} schema.')
 
 def init_app(app):
     """Register CLI commands with the Flask app."""

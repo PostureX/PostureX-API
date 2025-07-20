@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
-from ..config.database import db
-from ..models.analysis import Analysis
+from src.config.database import db
+from src.models.analysis import Analysis
 
 analysis_bp = Blueprint('analysis', __name__)
 
