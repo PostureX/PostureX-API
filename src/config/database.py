@@ -18,7 +18,7 @@ class DatabaseConfig:
         self.db_name = os.getenv("DB_NAME")
         self.db_user = os.getenv("DB_USER")
         self.db_password = os.getenv("DB_PASSWORD")
-        self.schema_name = 'spfposture'
+        self.schema_name = os.getenv("SCHEMA_NAME")
     
     def get_database_uri(self):
         return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
@@ -32,9 +32,6 @@ class DatabaseConfig:
                 'pool_recycle': 300,
             }
         }
-    
-    def get_schema_name(self):
-        return self.schema_name
 
 # Global database config instance
 db_config = DatabaseConfig()

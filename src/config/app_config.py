@@ -1,9 +1,9 @@
 from datetime import timedelta
 import secrets
 import os
-from .database import db_config
-from .production_config import ProductionConfig
-from .dev_config import DevConfig
+from src.config.database import db_config
+from src.config.production_config import ProductionConfig
+from src.config.dev_config import DevConfig
 
 class AppConfig:
     """Application configuration"""
@@ -11,7 +11,7 @@ class AppConfig:
     def __init__(self):
         self.jwt_secret = os.getenv('JWT_SECRET', secrets.token_hex(32))
         self.debug = os.getenv('DEBUG')
-        self.cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+        self.cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173", os.getenv("API_BASE_URL")]
         self.dev_config = DevConfig()
         self.prod_config = ProductionConfig()
     

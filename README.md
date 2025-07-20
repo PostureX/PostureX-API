@@ -165,9 +165,15 @@ pip install -r flask_requirements.txt
 
 ## Database Migrations
 
+
 **1. Initialize migration repository (first time only):**
 ```bash
 flask db init
+```
+
+**Note:** If you have already initialized migrations before and need to re-run `flask db init`, you must first clear the migration history in your database. Run the following SQL command in your database to remove the Alembic version record:
+```sql
+delete from alembic_version;
 ```
 
 **2. Create a migration after changing models:**

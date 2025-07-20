@@ -2,13 +2,13 @@ from flask import Flask
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 
-from .config.app_config import AppConfig
-from .config.database import db, migrate
-from .controllers import auth_bp, analysis_bp
-from .utils import setup_logging
-from . import cli
-from .config.dev_config import DevConfig
-from .config.production_config import ProductionConfig
+from src.config.app_config import AppConfig
+from src.config.database import db, migrate
+from src.controllers import auth_bp, analysis_bp
+from src.utils import setup_logging
+from src import cli
+from src.config.dev_config import DevConfig
+from src.config.production_config import ProductionConfig
 
 app_configuration = DevConfig()
 
