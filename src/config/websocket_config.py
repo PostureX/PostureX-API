@@ -5,8 +5,8 @@ WEBSOCKET_HOST = '10.3.250.181'
 MODEL_CONFIGS = {
     'cx': {
         'port': 8891,
-        'model_config': './posture-x-models/td-hm_res152_8xb32-210e_coco-wholebody-256x192.py',
-        'checkpoint_path': './posture-x-models/best_coco-wholebody_AP_epoch_210.pth',
+        'model_config': './models/td-hm_res152_8xb32-210e_coco-wholebody-256x192.py',
+        'checkpoint_path': './models/best_coco-wholebody_AP_epoch_210.pth',
         'device': 'cuda'
     },
     'gy': {
