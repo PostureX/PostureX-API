@@ -35,7 +35,7 @@ class AuthController:
                 identity=str(new_user.id), expires_delta=timedelta(hours=3)
             )
 
-            return {"message": "User registered successfully", "name": name, "token": access_token}, 201
+            return {"message": "User registered successfully", "user": new_user.to_dict(), "token": access_token}, 201
 
         except IntegrityError:
             db.session.rollback()
