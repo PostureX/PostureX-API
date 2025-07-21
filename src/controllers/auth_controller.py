@@ -21,7 +21,7 @@ class AuthController:
             # Check if user already exists
             existing_user = User.query.filter_by(email=email).first()
             if existing_user:
-                return {"error": "User already exists"}, 400
+                return {"error": "User already exists"}, 409
 
             # Hash password and create user
             password_hash = generate_password_hash(password)
@@ -39,7 +39,7 @@ class AuthController:
 
         except IntegrityError:
             db.session.rollback()
-            return {"error": "User already exists"}, 400
+            return {"error": "User already exists"}, 409
         except Exception as e:
             db.session.rollback()
             return {"error": str(e)}, 500
@@ -111,7 +111,7 @@ def login():
         response = make_response(jsonify(result))
         response.set_cookie(
             "access_token_cookie",
-            result["access_token"],
+            result["token"],
             max_age=timedelta(hours=3),
             httponly=True,
             secure=False,  # Set to True in production with HTTPS
