@@ -1,13 +1,10 @@
-from flask import Blueprint, request, jsonify, make_response
-from flask_jwt_extended import (
-    create_access_token,
-    jwt_required,
-    get_jwt_identity,
-    unset_jwt_cookies,
-)
-from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import timedelta
+
+from flask import Blueprint, jsonify, make_response, request
+from flask_jwt_extended import (create_access_token, get_jwt_identity,
+                                jwt_required, unset_jwt_cookies)
 from sqlalchemy.exc import IntegrityError
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from src.config.database import db
 from src.models.user import User
