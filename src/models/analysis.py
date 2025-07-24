@@ -1,6 +1,4 @@
 from datetime import datetime
-from typing import Optional, Dict, List
-from dataclasses import dataclass
 from src.config.database import db, db_config
 
 class Analysis(db.Model):

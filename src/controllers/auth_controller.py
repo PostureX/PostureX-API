@@ -1,123 +1,128 @@
-from flask import Blueprint, request, jsonify, make_response
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, unset_jwt_cookies
-from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import timedelta
+
+from flask import Blueprint, jsonify, make_response, request
+from flask_jwt_extended import (create_access_token, get_jwt_identity,
+                                jwt_required, unset_jwt_cookies)
 from sqlalchemy.exc import IntegrityError
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from src.config.database import db
 from src.models.user import User
 
-auth_bp = Blueprint('auth', __name__)
+auth_bp = Blueprint("auth", __name__)
+
 
 class AuthController:
     """Controller for authentication-related operations"""
-    
+
     def register_user(self, email, name, password):
         """Register a new user"""
         try:
             # Check if user already exists
             existing_user = User.query.filter_by(email=email).first()
             if existing_user:
-                return {"error": "User already exists"}, 400
-            
+                return {"error": "User already exists"}, 409
+
             # Hash password and create user
             password_hash = generate_password_hash(password)
-            new_user = User(
-                email=email,
-                name=name,
-                password_hash=password_hash
-            )
-            
+            new_user = User(email=email, name=name, password_hash=password_hash)
+
             db.session.add(new_user)
             db.session.commit()
             
-            return {"message": "User registered successfully", "name": name}, 201
-            
+            # Create JWT token
+            access_token = create_access_token(
+                identity=str(new_user.id), expires_delta=timedelta(hours=3)
+            )
+
+            return {"message": "User registered successfully", "user": new_user.to_dict(), "token": access_token}, 201
+
         except IntegrityError:
             db.session.rollback()
-            return {"error": "User already exists"}, 400
+            return {"error": "User already exists"}, 409
         except Exception as e:
             db.session.rollback()
             return {"error": str(e)}, 500
-    
+
     def login_user(self, email, password):
         """Authenticate user and create JWT token"""
         try:
             # Get user by email
             user = User.query.filter_by(email=email).first()
-            
+
             if not user or not check_password_hash(user.password_hash, password):
                 return {"error": "Invalid credentials"}, 401
-            
+
             # Create JWT token
             access_token = create_access_token(
-                identity=str(user.id),
-                expires_delta=timedelta(hours=3)
+                identity=str(user.id), expires_delta=timedelta(hours=3)
             )
-            
+
             return {
                 "message": "Login successful",
                 "user": user.to_dict(),
-                "access_token": access_token
+                "token": access_token,
             }, 200
-            
+
         except Exception as e:
             return {"error": str(e)}, 500
-    
+
     def get_user_profile(self, user_id):
         """Get user profile information"""
         try:
             user = User.query.get(int(user_id))
-            
+
             if not user:
                 return {"error": "User not found"}, 404
-            
+
             return {"user": user.to_dict()}, 200
-            
+
         except Exception as e:
             return {"error": str(e)}, 500
+
 
 # Initialize controller
 auth_controller = AuthController()
 
-@auth_bp.route('/register', methods=['POST'])
+
+@auth_bp.route("/register", methods=["POST"])
 def register():
     """Register a new user"""
     data = request.get_json()
-    if not data or not all(k in data for k in ('email', 'name', 'password')):
+    if not data or not all(k in data for k in ("email", "name", "password")):
         return jsonify({"error": "Missing required fields"}), 400
-    
+
     result, status = auth_controller.register_user(
-        data['email'], 
-        data['name'], 
-        data['password']
+        data["email"], data["name"], data["password"]
     )
     return jsonify(result), status
 
-@auth_bp.route('/login', methods=['POST'])
+
+@auth_bp.route("/login", methods=["POST"])
 def login():
     """Login user and set JWT cookie"""
     data = request.get_json()
-    if not data or not all(k in data for k in ('email', 'password')):
+    if not data or not all(k in data for k in ("email", "password")):
         return jsonify({"error": "Missing email or password"}), 400
-    
-    result, status = auth_controller.login_user(data['email'], data['password'])
-    
+
+    result, status = auth_controller.login_user(data["email"], data["password"])
+
     if status == 200:
         response = make_response(jsonify(result))
         response.set_cookie(
-            'access_token_cookie',
-            result['access_token'],
+            "access_token_cookie",
+            result["token"],
             max_age=timedelta(hours=3),
             httponly=True,
             secure=False,  # Set to True in production with HTTPS
-            samesite='Lax'
+            samesite="Lax",
         )
         return response
-    
+
     return jsonify(result), status
 
-@auth_bp.route('/logout', methods=['POST'])
+
+@auth_bp.route("/logout", methods=["POST"])
 @jwt_required()
 def logout():
     """Logout user and clear JWT cookie"""
@@ -125,7 +130,8 @@ def logout():
     unset_jwt_cookies(response)
     return response
 
-@auth_bp.route('/profile', methods=['GET'])
+
+@auth_bp.route("/profile", methods=["GET"])
 @jwt_required()
 def profile():
     """Get current user's profile"""
