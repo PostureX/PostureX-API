@@ -4,7 +4,7 @@ from flask_cors import CORS
 
 from src.config.app_config import AppConfig
 from src.config.database import db, migrate
-from src.controllers import auth_bp, analysis_bp
+from src.controllers import auth_bp, analysis_bp, video_bp, minio_hook_bp
 from src.utils import setup_logging
 from src import cli
 from src.config.dev_config import DevConfig
@@ -47,7 +47,11 @@ def create_app():
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(analysis_bp, url_prefix='/api/analysis')
-    
+    app.register_blueprint(video_bp, url_prefix='/api/video')
+
+    # Register MinIO webhook blueprint
+    app.register_blueprint(minio_hook_bp, url_prefix='/api/minio')
+
     # Health check endpoint
     @app.route('/api/health')
     def health_check():

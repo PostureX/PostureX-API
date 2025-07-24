@@ -7,9 +7,10 @@ import math
 import cv2
 import base64
 from flask_jwt_extended import decode_token
+import jwt
 from jwt.exceptions import InvalidTokenError
 from mmpose.apis import MMPoseInferencer
-from ..config.websocket_config import WEBSOCKET_HOST, MODEL_CONFIGS
+from websocket_config import WEBSOCKET_HOST, MODEL_CONFIGS, JWT_SECRET_KEY, JWT_ALGORITHM
 
 # Load model per gpu at startup for multiple models
 NUM_GPUS = 4
@@ -49,7 +50,7 @@ async def authenticate_websocket(websocket):
         
         # Validate JWT token
         try:
-            decoded_token = decode_token(token)
+            decoded_token = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
             user_id = decoded_token.get('sub')  # 'sub' is the subject (user_id)
             
             if not user_id:
@@ -270,9 +271,6 @@ def determine_user_side(keypoints, head_tilt_angle=None):
     #Nose, Eye, Ear (COCO Wholebody)
     keypoint_index_both_side = {"left":[0, 1, 3],"right":[0, 2, 4]}
     
-    print(f"LEFT = Nose: {keypoints[keypoint_index_both_side['left'][0]]}, Eye: {keypoints[keypoint_index_both_side['left'][1]]}, Ear: {keypoints[keypoint_index_both_side['left'][2]]}")
-    print(f"RIGHT = Nose: {keypoints[keypoint_index_both_side['right'][0]]}, Eye: {keypoints[keypoint_index_both_side['right'][1]]}, Ear: {keypoints[keypoint_index_both_side['right'][2]]}")
-    
     #If nose<left eye<left ear, user and nose>right eye>right ear, user facing front
     if (keypoints[keypoint_index_both_side['left'][0]][0] < keypoints[keypoint_index_both_side['left'][1]][0] < keypoints[keypoint_index_both_side['left'][2]][0]) and (keypoints[keypoint_index_both_side['right'][0]][0] > keypoints[keypoint_index_both_side['right'][1]][0] > keypoints[keypoint_index_both_side['right'][2]][0]):
         return 'front'
@@ -329,11 +327,12 @@ def posture_score_from_keypoints(keypoints):
         right_score = linear_score(right_offset, offset_optimal, tolerance, limit)
         posture_score['foot_to_shoulder_offset'] = weights_front['foot_to_shoulder_offset'] * ((left_score + right_score) / 2)
 
-        angles = {
-            'foot_to_shoulder_offset': (left_offset, right_offset),
+        measurements = {
+            'foot_to_shoulder_offset_left': left_offset,
+            'foot_to_shoulder_offset_right': right_offset,
         }
 
-        return posture_score, angles
+        return posture_score, measurements
 
     elif user_side in ['left', 'right']:
         posture_score = {
@@ -413,7 +412,7 @@ def posture_score_from_keypoints(keypoints):
         #     nose_score = linear_score(nose_offset, nose_offset_optimal_range[1], 0, nose_offset_limit)
         # posture_score['nose_offset(back bent)'] = weights_side['nose_offset(back bent)'] * nose_score
 
-        angles = {
+        measurements = {
             'knee_angle': knee_angle,
             'head_tilt': head_tilt,
             'arm_angle': arm_angle,
@@ -422,7 +421,7 @@ def posture_score_from_keypoints(keypoints):
             'back_angle': back_angle,
         }
 
-        return posture_score
+        return posture_score, measurements
 
 async def handle_inference(websocket, model_name: str):
     """Handle WebSocket connection with JWT authentication and inference"""
@@ -464,9 +463,9 @@ async def handle_inference(websocket, model_name: str):
                 continue
 
             keypoints = preds[0][0]['keypoints']
-            posture_score = posture_score_from_keypoints(keypoints)
+            posture_score, measurement = posture_score_from_keypoints(keypoints)
 
-            await websocket.send(json.dumps({'keypoints': keypoints, 'posture_score': posture_score}))
+            await websocket.send(json.dumps({'keypoints': keypoints, 'posture_score': posture_score, 'measurements': measurement}))
 
         except Exception as e:
             await websocket.send(json.dumps({'error': str(e)}))
