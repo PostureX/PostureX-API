@@ -62,8 +62,9 @@ PostureX-API/
 - Protected routes with role-based access
 
 ### 📁 **File Upload & Storage**
-- **Single Upload**: Individual video/image analysis
-- **Multi-view Upload**: 4-view posture analysis (front, left, right, back)
+- **Unified Upload API**: Single endpoint for 1-4 files with explicit view specification
+- **View-Specific Analysis**: Users specify actual camera angle (front, left, right, back)
+- **Session-Based Processing**: Multiple files grouped by session for comprehensive analysis
 - **MinIO Integration**: Scalable object storage with webhook processing
 - **Model Selection**: Choose between different AI models (CX, GY)
 
@@ -279,8 +280,8 @@ Authorization: Bearer <jwt_token>
 
 ### 📁 File Upload & Analysis
 
-#### Single File Upload
-Upload a single video or image for posture analysis.
+#### Unified Upload API
+Upload 1-4 files for posture analysis. Users must specify the actual view (front, left, right, back) for each file.
 
 ```http
 POST /api/video/upload
@@ -288,55 +289,70 @@ Authorization: Bearer <jwt_token>
 Content-Type: multipart/form-data
 
 Form Data:
-- file: <video_or_image_file>
+- session_id: "session_123" (required)
 - model: "cx" (optional, defaults to "cx")
+- front: <front_view_file> (optional)
+- left: <left_view_file> (optional)  
+- right: <right_view_file> (optional)
+- back: <back_view_file> (optional)
+```
+
+**Single View Example:**
+```javascript
+const formData = new FormData();
+formData.append('left', leftVideoFile);  // User specifies it's the left view
+formData.append('session_id', 'session_123');
+formData.append('model', 'cx');
+
+fetch('/api/video/upload', {
+    method: 'POST',
+    body: formData,
+    headers: { 'Authorization': 'Bearer ' + token }
+});
+```
+
+**Multi-View Example:**
+```javascript
+const formData = new FormData();
+formData.append('front', frontVideoFile);
+formData.append('left', leftVideoFile);
+formData.append('right', rightVideoFile);
+formData.append('back', backVideoFile);
+formData.append('session_id', 'session_123');
+formData.append('model', 'cx');
+
+fetch('/api/video/upload', {
+    method: 'POST',
+    body: formData,
+    headers: { 'Authorization': 'Bearer ' + token }
+});
 ```
 
 **Response:**
 ```json
 {
-  "file_url": "http://minio:9000/videos/user123/cx_video.mp4",
-  "filename": "cx_video.mp4",
-  "original_filename": "video.mp4",
-  "model": "cx",
-  "file_type": "video",
-  "message": "File uploaded successfully. Analysis will begin automatically."
-}
-```
-
-#### Multi-view Upload
-Upload 4 files for comprehensive posture analysis.
-
-```http
-POST /api/video/upload/multiview
-Authorization: Bearer <jwt_token>
-Content-Type: multipart/form-data
-
-Form Data:
-- session_id: "session_123"
-- model: "cx" (optional)
-- front: <front_view_file>
-- left: <left_view_file>
-- right: <right_view_file>
-- back: <back_view_file>
-```
-
-**Response:**
-```json
-{
-  "message": "All files uploaded successfully. Analysis will begin automatically.",
+  "message": "All files uploaded successfully. 2 files uploaded. Analysis will begin automatically.",
   "session_id": "session_123",
   "model": "cx",
   "uploaded_files": {
-    "front": {
-      "file_url": "http://minio:9000/videos/user123/session_123/cx_front.mp4",
-      "filename": "cx_front.mp4",
+    "left": {
+      "file_url": "http://minio:9000/videos/user123/session_123/cx_left.mp4",
+      "filename": "cx_left.mp4",
+      "original_filename": "left_video.mp4",
       "model": "cx",
+      "view": "left",
+      "file_type": "video"
+    },
+    "right": {
+      "file_url": "http://minio:9000/videos/user123/session_123/cx_right.mp4",
+      "filename": "cx_right.mp4",
+      "original_filename": "right_video.mp4", 
+      "model": "cx",
+      "view": "right",
       "file_type": "video"
     }
-    // ... other views
   },
-  "views_uploaded": ["front", "left", "right", "back"]
+  "views_uploaded": ["left", "right"]
 }
 ```
 

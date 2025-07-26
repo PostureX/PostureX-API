@@ -300,22 +300,8 @@ class MediaAnalysisService:
         if not frame_scores:
             return {"error": "No frames processed", "view": view}
         
-        # Determine the detected side for single uploads by finding most frequent side
-        detected_side = view  # Default to provided view
-        if view == 'single':
-            # Count occurrences of each side value
-            side_counts = {}
-            for score in frame_scores:
-                if isinstance(score, dict) and 'side' in score:
-                    side = score['side']
-                    side_counts[side] = side_counts.get(side, 0) + 1
-            
-            # Get the most frequent side
-            if side_counts:
-                detected_side = max(side_counts, key=side_counts.get)
-                print(f"Detected side from frames: {detected_side} (counts: {side_counts})")
-            else:
-                detected_side = 'unknown'
+        # Use the provided view since users must specify the actual view
+        detected_side = view  # Use the view provided by the user
         
         # Calculate average posture scores (excluding 'side' field)
         avg_scores = {}
@@ -424,11 +410,10 @@ def analyze_media_fallback(file_path: str, view: str) -> Dict:
             "front": {"overall_score": 85, "metrics": {"foot_alignment": 0.8}},
             "left": {"overall_score": 82, "metrics": {"back_angle": 5.2, "head_tilt": -2.1}},
             "right": {"overall_score": 80, "metrics": {"back_angle": 4.8, "head_tilt": -1.8}},
-            "back": {"overall_score": 78, "metrics": {"shoulder_alignment": 0.9}},
-            "single": {"overall_score": 83, "metrics": {"general_posture": 0.85}}
+            "back": {"overall_score": 78, "metrics": {"shoulder_alignment": 0.9}}
         }
         
-        base_score = view_scores.get(view, view_scores["single"])
+        base_score = view_scores.get(view, view_scores["front"])  # Default to front if unknown view
         
         return {
             "overall_score": base_score["overall_score"] + np.random.uniform(-5, 5),
