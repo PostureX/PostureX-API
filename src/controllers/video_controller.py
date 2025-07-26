@@ -16,106 +16,68 @@ def ensure_bucket():
 @video_bp.route('/upload', methods=['POST'])
 @jwt_required()
 def upload_media():
-    """Upload single image or video file"""
+    """Upload 1-4 media files for posture analysis (supports front, left, right, back views)"""
     user_id = str(get_jwt_identity())
     
-    # Check for file in request
-    if 'file' not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    
-    # Get optional model parameter (defaults to 'cx')
-    model_id = request.form.get('model', 'cx')
-    
-    # Validate model (you can expand this list as needed)
-    available_models = ['cx', 'gy']
-    if model_id not in available_models:
-        return jsonify({"error": f"Invalid model: {model_id}. Available models: {available_models}"}), 400
-    
-    # Validate file type
-    allowed_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v', 
-                         '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}
-    file_ext = os.path.splitext(file.filename.lower())[1]
-    if file_ext not in allowed_extensions:
-        return jsonify({"error": f"Unsupported file type: {file_ext}"}), 400
-    
-    filename = secure_filename(file.filename)
-    
-    # Format filename as modelname_originalname for single uploads
-    base_name, ext = os.path.splitext(filename)
-    model_filename = f"{model_id}_{base_name}{ext}"
-    minio_path = f"{user_id}/{model_filename}"
-    
-    ensure_bucket()
-    file.seek(0)
-    minio_client.put_object(
-        BUCKET_NAME,
-        minio_path,
-        file,
-        length=-1,
-        part_size=10*1024*1024,
-        content_type=file.mimetype
-    )
-    
-    file_url = f"http://{MINIO_ENDPOINT}/{BUCKET_NAME}/{minio_path}"
-    
-    return jsonify({
-        "file_url": file_url,
-        "filename": model_filename,
-        "original_filename": filename,
-        "model": model_id,
-        "file_type": "video" if file_ext in {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v'} else "image",
-        "message": "File uploaded successfully. Analysis will begin automatically."
-    }), 201
-
-@video_bp.route('/upload/multiview', methods=['POST'])
-@jwt_required()
-def upload_multi_view():
-    """Upload multiple files for multi-view posture analysis (front, left, right, back)"""
-    user_id = str(get_jwt_identity())
-    
-    # Get session_id (required for multi-view)
+    # Get required session_id
     session_id = request.form.get('session_id')
     if not session_id:
-        return jsonify({"error": "session_id is required for multi-view uploads"}), 400
+        return jsonify({"error": "session_id is required"}), 400
+    
+    # Check if session_id already exists for this user
+    folder_prefix = f"{user_id}/{session_id}/"
+    ensure_bucket()
+    existing_objects = list(minio_client.list_objects(BUCKET_NAME, prefix=folder_prefix, recursive=True))
+    if existing_objects:
+        return jsonify({
+            "error": "session_id already exists", 
+            "message": f"Session '{session_id}' already exists for this user. Please use a different session_id or delete the existing session first.",
+            "existing_files": [obj.object_name for obj in existing_objects]
+        }), 409  # Conflict status code
     
     # Get optional model parameter (defaults to 'cx')
-    model_id = request.form.get('model', 'cx')
+    model_id = request.form.get('model')
+    if not model_id:
+        return jsonify({"error": "model is required"}), 400
     
     # Validate model
     available_models = ['cx', 'gy']
     if model_id not in available_models:
         return jsonify({"error": f"Invalid model: {model_id}. Available models: {available_models}"}), 400
     
-    # Expected views
-    expected_views = ['front', 'left', 'right', 'back']
+    # Validate file types
+    allowed_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v', 
+                         '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}
+    
+    # Supported views (user must specify the actual view)
+    supported_views = ['front', 'left', 'right', 'back']
+    
     uploaded_files = {}
     errors = []
     
-    # Process each view
-    for view in expected_views:
-        if view not in request.files:
-            errors.append(f"Missing file for {view} view")
-            continue
-            
-        file = request.files[view]
+    # Check if any files are provided
+    if not request.files:
+        return jsonify({"error": "No files provided"}), 400
+    
+    # Process each file in the request
+    for field_name, file in request.files.items():
         if file.filename == '':
-            errors.append(f"No file selected for {view} view")
+            errors.append(f"No file selected for {field_name}")
+            continue
+        
+        # Determine view from field name
+        view = field_name.lower()
+        if view not in supported_views:
+            errors.append(f"Unsupported view: {view}. Supported views: {supported_views}")
             continue
         
         # Validate file type
-        allowed_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v', 
-                             '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}
         file_ext = os.path.splitext(file.filename.lower())[1]
         if file_ext not in allowed_extensions:
             errors.append(f"Unsupported file type for {view}: {file_ext}")
             continue
         
-        # Upload to MinIO with model prefix in filename
-        # Format: modelname_side.ext for multiview uploads
+        # Create MinIO path: user_id/session_id/modelname_view.ext
         minio_path = f"{user_id}/{session_id}/{model_id}_{view}{file_ext}"
         
         try:
@@ -133,27 +95,35 @@ def upload_multi_view():
             uploaded_files[view] = {
                 "file_url": f"http://{MINIO_ENDPOINT}/{BUCKET_NAME}/{minio_path}",
                 "filename": f"{model_id}_{view}{file_ext}",
+                "original_filename": file.filename,
                 "model": model_id,
+                "view": view,
                 "file_type": "video" if file_ext in {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v'} else "image"
             }
             
         except Exception as e:
             errors.append(f"Failed to upload {view}: {str(e)}")
     
-    # Return results
-    if errors and not uploaded_files:
-        return jsonify({"error": "All uploads failed", "details": errors}), 400
-    elif errors:
+    # Validate that at least one file was uploaded successfully
+    if not uploaded_files:
         return jsonify({
-            "message": "Partial upload success",
+            "error": "No files were uploaded successfully", 
+            "details": errors
+        }), 400
+    
+    # Return results
+    if errors:
+        return jsonify({
+            "message": f"Partial upload success. {len(uploaded_files)} files uploaded.",
             "uploaded_files": uploaded_files,
             "errors": errors,
             "session_id": session_id,
-            "model": model_id
+            "model": model_id,
+            "views_uploaded": list(uploaded_files.keys())
         }), 207  # Multi-status
     else:
         return jsonify({
-            "message": "All files uploaded successfully. Analysis will begin automatically.",
+            "message": f"All files uploaded successfully. {len(uploaded_files)} files uploaded. Analysis will begin automatically.",
             "uploaded_files": uploaded_files,
             "session_id": session_id,
             "model": model_id,
@@ -162,43 +132,40 @@ def upload_multi_view():
 
 @video_bp.route('/delete', methods=['POST'])
 @jwt_required()
-def delete_video():
+def delete_session():
+    """Delete all files for a session_id"""
     user_id = str(get_jwt_identity())
     data = request.get_json()
-    if not data or 'filename' not in data:
-        return jsonify({"error": "Missing filename"}), 400
-    filename = data['filename']
-    minio_path = f"{user_id}/{filename}"
-    ensure_bucket()
-    try:
-        minio_client.remove_object(BUCKET_NAME, minio_path)
-        return jsonify({"message": "Video deleted successfully"}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
     
-@video_bp.route('/delete/multiview', methods=['POST'])
-@jwt_required()
-def delete_multiview():
-    user_id = str(get_jwt_identity())
-    data = request.get_json()
     if not data or 'session_id' not in data:
         return jsonify({"error": "Missing session_id"}), 400
+    
     session_id = data['session_id']
     folder_prefix = f"{user_id}/{session_id}/"
+    
     ensure_bucket()
     try:
+        # List all objects in the session folder
         objects = minio_client.list_objects(BUCKET_NAME, prefix=folder_prefix, recursive=True)
         object_names = [obj.object_name for obj in objects]
 
         if not object_names:
             return jsonify({"message": "No files found to delete"}), 404
         
+        # Delete all files in the session
+        deleted_files = []
         for minio_path in object_names:
             try:
                 minio_client.remove_object(BUCKET_NAME, minio_path)
+                deleted_files.append(minio_path)
             except Exception as e:
-                return jsonify({"error": str(e)}), 500
+                return jsonify({"error": f"Failed to delete {minio_path}: {str(e)}"}), 500
         
-        return jsonify({"message": f"Multi-view session deleted successfully. Removed {len(object_names)} files: {object_names}"}), 200
+        return jsonify({
+            "message": f"Session deleted successfully. Removed {len(deleted_files)} files.",
+            "session_id": session_id,
+            "deleted_files": deleted_files
+        }), 200
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
