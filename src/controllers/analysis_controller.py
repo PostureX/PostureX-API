@@ -10,12 +10,12 @@ analysis_bp = Blueprint("analysis", __name__)
 class AnalysisController:
     """Controller for analysis-related operations"""
 
-    def save_analysis(self, user_id, filename, posture_result, feedback):
+    def save_analysis(self, user_id, session_id, posture_result, feedback):
         """Save analysis results to database"""
         try:
             new_analysis = Analysis(
                 user_id=user_id,
-                filename=filename,
+                session_id=session_id,
                 posture_result=posture_result,  # Posture result in JSON format
                 feedback=feedback,
             )
@@ -86,12 +86,12 @@ def save_analysis():
     user_id = int(get_jwt_identity())
     data = request.get_json()
 
-    if not data or not all(k in data for k in ('filename', 'posture_result', 'feedback')):
+    if not data or not all(k in data for k in ('session_id', 'posture_result', 'feedback')):
         return jsonify({"error": "Missing required fields"}), 400
 
     result, status = analysis_controller.save_analysis(
         user_id,
-        data['filename'],
+        data['session_id'],
         data["posture_result"],
         data['feedback'],
     )

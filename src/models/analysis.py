@@ -8,10 +8,10 @@ class Analysis(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey(f'{db_config.schema_name}.users.id'), nullable=False)
-    filename = db.Column(db.Text, nullable=False)
+    session_id = db.Column(db.Text, nullable=False)
     posture_result = db.Column(db.Text, nullable=False)  # JSON string of analysis results
     feedback = db.Column(db.Text, nullable=False)
-    status = db.Column(db.String(50), default='pending')  # e.g., 'pending', 'completed', 'failed'
+    status = db.Column(db.String(50), default='in_progress')  # e.g., 'in_progress', 'completed', 'failed'
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def __repr__(self):
@@ -22,7 +22,7 @@ class Analysis(db.Model):
         return {
             'id': self.id,
             'user_id': self.user_id,
-            'filename': self.filename,  # If the session is a group, this would be the group name
+            'session_id': self.session_id,
             'posture_result': self.posture_result,
             'feedback': self.feedback,
             'status': self.status,
@@ -34,7 +34,7 @@ class Analysis(db.Model):
         """Create Analysis object from dictionary"""
         analysis = cls()
         analysis.user_id = data.get('user_id', 0)
-        analysis.filename = data.get('filename', '')
+        analysis.session_id = data.get('session_id', '')
         analysis.posture_result = data.get('posture_result', '')
         analysis.feedback = data.get('feedback', '')
         analysis.status = data.get('status', 'pending')

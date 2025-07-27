@@ -138,7 +138,7 @@ The `analysis` table stores results:
 CREATE TABLE analysis (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
-    filename TEXT NOT NULL,  -- session_id for grouping
+    session_id TEXT NOT NULL,  -- session_id for grouping
     posture_result TEXT NOT NULL,  -- JSON string
     feedback TEXT NOT NULL,
     status VARCHAR(50) DEFAULT 'pending',  -- pending, in_progress, completed, failed
