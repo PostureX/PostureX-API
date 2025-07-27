@@ -138,3 +138,36 @@ def profile():
     user_id = get_jwt_identity()
     result, status = auth_controller.get_user_profile(user_id)
     return jsonify(result), status
+
+
+# New endpoint to validate session (check if user is logged in)
+@auth_bp.route("/validate-session", methods=["GET"])
+@jwt_required()
+def validate_session():
+    """Validate if the user is logged in (JWT cookie present and valid)"""
+    user_id = get_jwt_identity()
+    result, status = auth_controller.get_user_profile(user_id)
+    if status == 200:
+        return jsonify({"logged_in": True, "user": result["user"]}), 200
+    else:
+        return jsonify({"logged_in": False, "error": result.get("error", "access_token_cookie not found")}), status
+
+
+# New endpoint to generate WebSocket token
+@auth_bp.route("/ws-token", methods=["GET"])
+@jwt_required()
+def generate_ws_token():
+    """Generate a short-lived one-time token for WebSocket authentication"""
+    user_id = get_jwt_identity()
+    
+    ws_token = create_access_token(
+        identity=str(user_id), 
+        expires_delta=timedelta(minutes=5),
+        additional_claims={"ws_auth": True, "one_time": True}
+    )
+    
+    return jsonify({
+        "ws_token": ws_token,
+        "expires_in": 300,
+        "message": "WebSocket token generated successfully"
+    }), 200

@@ -522,6 +522,10 @@ WEBSOCKET_CONFIG = {
 }
 ```
 
+Ensure that the `websocket_model_inference_service.py` file is updated to include any new models or configurations.
+
+---
+
 ### Database Schema
 
 **Users Table:**
@@ -540,81 +544,12 @@ CREATE TABLE users (
 CREATE TABLE analysis (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id),
-    filename VARCHAR(255),
+    session_id VARCHAR(255),
     posture_result TEXT,
     feedback TEXT,
     status VARCHAR(50) DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-```
-
----
-
-## 🐳 Docker Deployment(Ignore)
-
-### Using Docker Compose
-
-**1. Build and start services:**
-```bash
-docker-compose up -d
-```
-
-**2. Services:**
-- **API**: `http://localhost:5000`
-- **MinIO**: `http://localhost:9000` (console: `http://localhost:9001`)
-- **PostgreSQL**: `localhost:5432`
-- **WebSocket Services**: `ws://localhost:8894`, `ws://localhost:8893`
-
-### Manual Docker Setup
-
-**1. Build the API image:**
-```bash
-docker build -t posturex-api .
-```
-
-**2. Run PostgreSQL:**
-```bash
-docker run --name postgres-db \
-  -e POSTGRES_DB=posturex_db \
-  -e POSTGRES_USER=username \
-  -e POSTGRES_PASSWORD=password \
-  -p 5432:5432 -d postgres:13
-```
-
-**3. Run MinIO with Webhook Setup:**
-```bash
-# Step 1: Create MinIO container
-docker run --name minio \
-  -e MINIO_ROOT_USER=minioadmin \
-  -e MINIO_ROOT_PASSWORD=minioadmin \
-  -p 9000:9000 -p 9001:9001 \
-  -v minio_data:/data \
-  -d minio/minio server /data --console-address ":9001"
-
-# Step 2: Install MinIO Client in container
-docker exec minio mc alias set local http://localhost:9000 minioadmin minioadmin
-
-# Step 3: Create videos bucket
-docker exec minio mc mb local/videos
-
-# Step 4: Configure webhook notification
-docker exec minio mc admin config set local notify_webhook:1 \
-  endpoint="http://host.docker.internal:5000/api/minio/webhook" \
-  format="namespace"
-
-# Step 5: Add event notification for uploads
-docker exec minio mc event add local/videos arn:minio:sqs::1:webhook --event put
-
-# Step 6: Restart MinIO to apply webhook settings
-docker restart minio
-```
-
-**4. Run the API:**
-```bash
-docker run --name posturex-api \
-  --link postgres-db:postgres \
-  --link minio:minio \
-  -p 5000:5000 -d posturex-api
 ```
 
 ---

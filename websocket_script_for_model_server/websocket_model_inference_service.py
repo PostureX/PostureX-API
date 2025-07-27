@@ -27,25 +27,25 @@ gpu_cycle = itertools.cycle(range(NUM_GPUS))
 
 
 async def authenticate_websocket(websocket):
-    """Authenticate WebSocket connection using JWT token from cookies"""
+    """Authenticate WebSocket connection using JWT token from query parameters"""
     try:
-        # Wait for authentication message with cookies
-        auth_message = await asyncio.wait_for(websocket.recv(), timeout=10.0)
-        auth_data = json.loads(auth_message)
-        
-        # Extract JWT token from cookies
-        cookies = auth_data.get('cookies', '')
+        # Extract token from query parameters
         token = None
+    
+        path = websocket.request.path
         
-        # Parse cookies to find access_token_cookie
-        for cookie in cookies.split(';'):
-            cookie = cookie.strip()
-            if cookie.startswith('access_token_cookie='):
-                token = cookie.split('=', 1)[1]
-                break
-        
+        if path and '?' in path:
+            from urllib.parse import parse_qs, urlparse
+            parsed_url = urlparse(path)
+            query_params = parse_qs(parsed_url.query)
+            if 'token' in query_params:
+                token = query_params['token'][0]
+        else:
+            return {"error": "No query parameters found in path"}
+
         if not token:
-            await websocket.send(json.dumps({'error': 'No JWT token found in cookies'}))
+            error_msg = f'No JWT token found in query parameters. Please provide token as ?token=your_ws_token. Path was: {path}'
+            await websocket.send(json.dumps({'error': error_msg}))
             return False
         
         # Validate JWT token
@@ -57,20 +57,20 @@ async def authenticate_websocket(websocket):
                 await websocket.send(json.dumps({'error': 'Invalid token: no user ID'}))
                 return False
             
-            # Send successful authentication response
-            await websocket.send(json.dumps({'status': 'authenticated', 'user_id': user_id}))
-            return True
+            ws_auth = decoded_token.get('ws_auth', False)
+            one_time = decoded_token.get('one_time', False)
             
+            if ws_auth and one_time:
+                await websocket.send(json.dumps({'status': 'authenticated', 'user_id': user_id}))
+                return True
+            else:
+                await websocket.send(json.dumps({'status': 'unauthenticated', 'user_id': user_id}))
+                return False
+
         except InvalidTokenError as e:
             await websocket.send(json.dumps({'error': f'Invalid JWT token: {str(e)}'}))
             return False
             
-    except asyncio.TimeoutError:
-        await websocket.send(json.dumps({'error': 'Authentication timeout'}))
-        return False
-    except json.JSONDecodeError:
-        await websocket.send(json.dumps({'error': 'Invalid JSON in authentication message'}))
-        return False
     except Exception as e:
         await websocket.send(json.dumps({'error': f'Authentication failed: {str(e)}'}))
         return False
@@ -425,17 +425,11 @@ def posture_score_from_keypoints(keypoints):
 
 async def handle_inference(websocket, model_name: str):
     """Handle WebSocket connection with JWT authentication and inference"""
-    # Perform authentication handshake
+    # Perform authentication handshake (path will be extracted from websocket object)
     if not await authenticate_websocket(websocket):
         await websocket.close()
         return
-    
-    # Check if model exists and has inferencers
-    if model_name not in inferencers or inferencers[model_name] is None:
-        await websocket.send(json.dumps({'error': f'Model {model_name} not available or not configured'}))
-        await websocket.close()
-        return
-    
+
     async for message in websocket:
         try:
             data = json.loads(message)
@@ -473,13 +467,24 @@ async def handle_inference(websocket, model_name: str):
 async def start_model_server(model_name: str):
     port = MODEL_CONFIGS[model_name]['port']
     print(f"Starting WebSocket server for model '{model_name}' at ws://{WEBSOCKET_HOST}:{port}")
-    async with websockets.serve(lambda ws: handle_inference(ws, model_name), WEBSOCKET_HOST, port):
-        await asyncio.Future()  # run forever
+    
+    async def handler(websocket):
+        await handle_inference(websocket, model_name)
+
+    server = await websockets.serve(handler, WEBSOCKET_HOST, port)
+    print(f"WebSocket server for model '{model_name}' started on port {port}")
+    await server.wait_closed()
 
 async def main():
+    print("Starting WebSocket servers for all models...")
     # Start a server for each model in MODEL_CONFIGS
-    servers = [start_model_server(model_name) for model_name in MODEL_CONFIGS]
-    await asyncio.gather(*servers)
+    try:
+        await asyncio.gather(*[start_model_server(model_name) for model_name in MODEL_CONFIGS])
+    except KeyboardInterrupt:
+        print("Shutting down servers...")
+    except Exception as e:
+        print(f"Error in main: {e}")
+        raise
  
 if __name__ == '__main__':
     asyncio.run(main())

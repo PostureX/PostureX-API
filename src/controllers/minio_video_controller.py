@@ -6,6 +6,8 @@ from src.services.video_upload_analysis_service import MediaAnalysisService
 from src.config.websocket_config import WEBSOCKET_HOST
 from flask_jwt_extended import decode_token, get_jwt_identity, jwt_required, create_access_token
 from urllib.parse import unquote
+from datetime import timedelta
+from google import genai
 import os
 import json
 import tempfile
@@ -13,6 +15,7 @@ import threading
 import time
 import traceback
 import asyncio
+from flask import current_app
 
 minio_hook_bp = Blueprint('minio_hook', __name__)
 
@@ -73,7 +76,12 @@ def run_inference_on_media(file_path, view, model_name):
     try:
         print(f"Starting inference for: {file_path} with model {model_name}")
         
-        service_token = create_access_token(identity="webhook_service", expires_delta=None)
+        # Create a WebSocket token with proper claims for authentication
+        service_token = create_access_token(
+            identity="webhook_service", 
+            expires_delta=timedelta(minutes=5),
+            additional_claims={"ws_auth": True, "one_time": True}
+        )
         analyzer = get_media_analyzer_for_model(model_name, service_token)
         
         if analyzer is None:
@@ -111,25 +119,56 @@ def run_inference_on_media(file_path, view, model_name):
 
 def create_view_result_structure(result):
     """Create standardized view result structure"""
-    return {
-        "score": {
-            "knee_angle": result.get("score", {}).get("knee_angle", "unknown"),
-            "head_tilt": result.get("score", {}).get("head_tilt", "unknown"),
-            "arm_angle": result.get("score", {}).get("arm_angle", "unknown"),
-            "arm_bent_angle": result.get("score", {}).get("arm_bent_angle", "unknown"),
-            "leg_spread": result.get("score", {}).get("leg_spread", "unknown"),
-            "back_angle": result.get("score", {}).get("back_angle", "unknown")
-        },
-        "measurements": {
-            "knee_angle": result.get("measurements", {}).get("knee_angle", "unknown"),
-            "head_tilt": result.get("measurements", {}).get("head_tilt", "unknown"),
-            "arm_angle": result.get("measurements", {}).get("arm_angle", "unknown"),
-            "arm_bent_angle": result.get("measurements", {}).get("arm_bent_angle", "unknown"),
-            "leg_spread": result.get("measurements", {}).get("leg_spread", "unknown"),
-            "back_angle": result.get("measurements", {}).get("back_angle", "unknown")
-        },
-        "keypoints": result.get("keypoints", [])
-    }
+    # The side information is now in the posture_score object
+    posture_score = result.get("score", {})
+    side = posture_score.get("side", None)
+    
+    # Also check the detected_view from the main result
+    if side is None:
+        side = result.get("detected_view", None)
+        
+    # Also check the view field from the main result
+    if side is None:
+        side = result.get("view", None)
+    
+    if side is None:
+        return {
+            "score": "error(no side detected)",
+            "measurements": "error(no side detected)",
+            "keypoints": "error(no side detected)"
+        }
+
+    if side in ["left", "right"]:
+        return {
+            "score": {
+                "knee_angle": posture_score.get("knee_angle", "unknown"),
+                "head_tilt": posture_score.get("head_tilt", "unknown"),
+                "arm_angle": posture_score.get("arm_angle", "unknown"),
+                "arm_bent_angle": posture_score.get("arm_bent_angle", "unknown"),
+                "leg_spread": posture_score.get("leg_spread", "unknown"),
+                "back_angle": posture_score.get("back_angle", "unknown")
+            },
+            "measurements": {
+                "knee_angle": result.get("measurements", {}).get("knee_angle", "unknown"),
+                "head_tilt": result.get("measurements", {}).get("head_tilt", "unknown"),
+                "arm_angle": result.get("measurements", {}).get("arm_angle", "unknown"),
+                "arm_bent_angle": result.get("measurements", {}).get("arm_bent_angle", "unknown"),
+                "leg_spread": result.get("measurements", {}).get("leg_spread", "unknown"),
+                "back_angle": result.get("measurements", {}).get("back_angle", "unknown")
+            },
+            "keypoints": result.get("keypoints", [])
+        }
+    elif side in ["front", "back"]:
+        return {
+            "score": {
+                "foot_to_shoulder_offset": posture_score.get("foot_to_shoulder_offset", 0.0)
+            },
+            "measurements": {
+                "foot_to_shoulder_offset_left": result.get("measurements", {}).get("foot_to_shoulder_offset_left", "unknown"),
+                "foot_to_shoulder_offset_right": result.get("measurements", {}).get("foot_to_shoulder_offset_right", "unknown")
+            },
+            "keypoints": result.get("keypoints", [])
+        }
 
 def process_session_files(user_id, session_id, model_name, app):
     """Process all files in a session folder and aggregate results"""
@@ -138,11 +177,11 @@ def process_session_files(user_id, session_id, model_name, app):
             print(f"Processing session: {user_id}/{session_id} with model {model_name}")
             
             # Find or create analysis record
-            analysis = Analysis.query.filter_by(user_id=user_id, filename=session_id).first()
+            analysis = Analysis.query.filter_by(user_id=user_id, session_id=session_id).first()
             if not analysis:
                 analysis = Analysis(
                     user_id=user_id,
-                    filename=session_id,
+                    session_id=session_id,
                     posture_result="{}",
                     feedback="",
                     status="in_progress"
@@ -214,14 +253,15 @@ def process_session_files(user_id, session_id, model_name, app):
                 
                 for view, result in session_results.items():
                     simplified_results[view] = create_view_result_structure(result)
-                
+
                 feedback = generate_session_feedback(session_results)
-                
+
+                # Serialize feedback to JSON string
                 analysis.posture_result = json.dumps(simplified_results)
-                analysis.feedback = feedback
+                analysis.feedback = json.dumps(feedback)  # Serialize feedback
                 analysis.status = "completed"
                 db.session.commit()
-                
+
                 print(f"Session analysis completed for {session_id}")
             else:
                 analysis.status = "failed"
@@ -239,30 +279,55 @@ def process_session_files(user_id, session_id, model_name, app):
 
 def generate_session_feedback(session_results):
     """Generate feedback based on all views in the session"""
-    feedback_parts = []
-    
-    for view, result in session_results.items():
-        if "score" in result:
-            scores = result["score"]
-            
-            if isinstance(scores, dict):
-                score_values = [v for v in scores.values() if isinstance(v, (int, float))]
-                if score_values:
-                    avg_score = sum(score_values) / len(score_values) * 100
-                    
-                    if avg_score >= 90:
-                        feedback_parts.append(f"{view.title()} view: Excellent posture!")
-                    elif avg_score >= 80:
-                        feedback_parts.append(f"{view.title()} view: Good posture with minor improvements needed.")
-                    elif avg_score >= 70:
-                        feedback_parts.append(f"{view.title()} view: Fair posture, consider adjustments.")
-                    else:
-                        feedback_parts.append(f"{view.title()} view: Poor posture, significant improvements needed.")
-    
-    if not feedback_parts:
-        return "Analysis completed but no feedback could be generated."
-    
-    return " ".join(feedback_parts)
+    client = genai.Client()
+    prompt = (
+        "You are an expert firearms posture coach and biomechanics analyst.\n\n"
+        "Your task:\n"
+        "Analyze a user’s fighting‑stance firearm posture using pose‑estimation JSON data (COCO‑WholeBody 133 keypoints) from up to four views: front, left, right, back.\n\n"
+        "Input:\n"
+        "A JSON object that may include any combination of sides (“front”, “left”, “right”, “back”). Each side contains:\n"
+        "  - \"score\": metric scores relevant to that view\n"
+        "  - \"measurements\": actual values or \"unknown\"\n"
+        "  - \"keypoints\": raw pose‑estimation data\n\n"
+        "For each side present, you must evaluate each **metric separately**, distinguishing:\n"
+        "  - **Commendation**: what is good or optimal for that metric\n"
+        "  - **Critique**: what deviates or needs improvement for that metric\n"
+        "  - **Suggestions**: concrete, actionable steps to improve that metric\n\n"
+        "If a metric is missing or marked “unknown”, note that analysis cannot be done for that metric.\n\n"
+        "Expected output:\n"
+        "Return a JSON structured as follows:\n\n"
+        "{\n"
+        "  \"<side>\": {\n"
+        "    \"<metric1>\": {\n"
+        "      \"commendation\": \"...\",\n"
+        "      \"critique\": \"...\",\n"
+        "      \"suggestions\": [ \"...\", \"...\" ]\n"
+        "    },\n"
+        "    \"<metric2>\": { ... },\n"
+        "    ...\n"
+        "  },\n"
+        "  ...\n"
+        "}\n\n"
+        "Output the JSON object only—no additional prose outside of the JSON. Just JSON to allow json.loads() to work\n\n"
+        "Keep feedback **succinct, actionable**, and **focused per metric**.\n"
+        f"{session_results}"
+    )
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt
+    )
+
+    if response and response.text:
+        try:
+            json_str = response.text.strip("`json")
+            feedback_json = json.loads(json_str)
+            return feedback_json
+        except json.JSONDecodeError:
+            print("Error: Unable to parse feedback as JSON.")
+            return {"error": "Invalid JSON response from Gemini API."}
+
+    return response.text if response and response.text else "No feedback generated"
 
 def delayed_session_processing(user_id, session_id, model_name, app):
     """Wrapper function for delayed session processing"""
@@ -295,7 +360,6 @@ def minio_webhook():
         for user_id, session_id, model_name in sessions_to_process:
             print(f"Starting session processing: {user_id}/{session_id} with model {model_name}")
             
-            from flask import current_app
             # Capture the app object before starting the timer
             app = current_app._get_current_object()
             
