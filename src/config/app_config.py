@@ -9,8 +9,7 @@ class AppConfig:
     """Application configuration"""
     
     def __init__(self):
-        # Use the same JWT secret as the WebSocket server for consistency
-        self.jwt_secret = os.getenv('JWT_SECRET', 'EdibleCookieDough')
+        self.jwt_secret = os.getenv('JWT_SECRET')
         self.debug = os.getenv('DEBUG')
         self.cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173", os.getenv("API_BASE_URL")]
         self.dev_config = DevConfig()
