@@ -385,7 +385,7 @@ def determine_user_side(keypoints, head_tilt_angle=None):
 
 
 def posture_score_from_keypoints(keypoints):
-    """Calculate posture score and measurements from keypoints."""
+    """Calculate posture score from keypoints"""
 
     def linear_score(value, optimal, tolerance, limit):
         deviation = abs(value - optimal)
@@ -396,7 +396,6 @@ def posture_score_from_keypoints(keypoints):
         else:
             return 1.0 - ((deviation - tolerance) / (limit - tolerance))
 
-    # Weights for each metric
     weights_side = {
         "knee_angle": 0.25,
         "head_tilt": 0.1,
@@ -405,66 +404,135 @@ def posture_score_from_keypoints(keypoints):
         "leg_spread": 0.15,
         "back_angle": 0.25,
     }
+
     weights_front = {"foot_to_shoulder_offset": 1.0}
 
+    # Determine user side
     user_side = determine_user_side(keypoints)
-    posture_score = {"side": user_side}
-    measurements = {}
 
     if user_side == "front":
+        posture_score = {
+            "side": user_side,
+            "foot_to_shoulder_offset": 0.0,
+        }
+
+        raw_scores_percent = {}
+
+        # Calculate the leg offset from the shoulder
+        offset_optimal = 0
+        tolerance = 2
+        limit = 20
         left_offset, right_offset = calculate_foot_to_shoulder_offset(keypoints)
-        offset_optimal, tolerance, limit = 0, 2, 20
+
         left_score = linear_score(left_offset, offset_optimal, tolerance, limit)
         right_score = linear_score(right_offset, offset_optimal, tolerance, limit)
-        posture_score["foot_to_shoulder_offset"] = weights_front["foot_to_shoulder_offset"] * ((left_score + right_score) / 2)
+        average_score = (left_score + right_score) / 2
+
+        posture_score["foot_to_shoulder_offset"] = (
+            weights_front["foot_to_shoulder_offset"] * average_score
+        )
+
+        raw_scores_percent["foot_to_shoulder_offset_left"] = round(left_score * 100, 2)
+        raw_scores_percent["foot_to_shoulder_offset_right"] = round(
+            right_score * 100, 2
+        )
+
         measurements = {
             "foot_to_shoulder_offset_left": left_offset,
             "foot_to_shoulder_offset_right": right_offset,
         }
-        weights = weights_front
-    else:
+
+        return posture_score, measurements, raw_scores_percent
+
+    elif user_side in ["left", "right"]:
+        posture_score = {
+            "side": user_side,
+            "knee_angle": 0.0,
+            "head_tilt": 0.0,
+            "arm_angle": 0.0,
+            "arm_bent_angle": 0.0,
+            "leg_spread": 0.0,
+            "back_angle": 0.0,
+        }
+
+        raw_scores_percent = {}
+
         # Knee angle
+        knee_angle_range = (10, 30)
         knee_angle = calculate_knee_angle(keypoints, user_side)
         knee_bent_angle = 180 - knee_angle
-        knee_range = (10, 30)
-        if knee_bent_angle < knee_range[0]:
-            knee_score = linear_score(knee_bent_angle, knee_range[0], 0, knee_range[0])
-        elif knee_bent_angle > knee_range[1]:
-            knee_score = linear_score(knee_bent_angle, knee_range[1], 0, knee_range[1])
+        if knee_bent_angle < knee_angle_range[0]:
+            score = linear_score(
+                knee_bent_angle, knee_angle_range[0], 0, knee_angle_range[0]
+            )
+        elif knee_bent_angle > knee_angle_range[1]:
+            score = linear_score(
+                knee_bent_angle, knee_angle_range[1], 0, knee_angle_range[1]
+            )
         else:
-            knee_score = 1.0
-        posture_score["knee_angle"] = weights_side["knee_angle"] * knee_score
+            score = 1.0
+        posture_score["knee_angle"] = weights_side["knee_angle"] * score
+        raw_scores_percent["knee_angle"] = round(score * 100, 2)
 
         # Head tilt
+        head_tilt_optimal = 0
+        head_tilt_tolerance = 10
+        head_tilt_limit = 30
         head_tilt = determine_head_tilt(keypoints, user_side)
-        head_score = linear_score(head_tilt, 0, 10, 30)
-        posture_score["head_tilt"] = weights_side["head_tilt"] * head_score
+        head_tilt_score = linear_score(
+            head_tilt, head_tilt_optimal, head_tilt_tolerance, head_tilt_limit
+        )
+        posture_score["head_tilt"] = weights_side["head_tilt"] * head_tilt_score
+        raw_scores_percent["head_tilt"] = round(head_tilt_score * 100, 2)
 
         # Arm angle from vertical
+        arm_tilt_optimal = 90
+        arm_tilt_tolerance = 10
+        arm_tilt_limit = 60
         arm_angle = calculate_arm_angle_from_vertical(keypoints, user_side)
-        arm_score = linear_score(arm_angle, 90, 10, 60)
-        posture_score["arm_angle"] = weights_side["arm_angle"] * arm_score
+        arm_angle_score = linear_score(
+            arm_angle, arm_tilt_optimal, arm_tilt_tolerance, arm_tilt_limit
+        )
+        posture_score["arm_angle"] = weights_side["arm_angle"] * arm_angle_score
+        raw_scores_percent["arm_angle"] = round(arm_angle_score * 100, 2)
 
         # Arm bent angle
-        arm_bent_angle = 180 - calculate_arm_bent_angle(keypoints, user_side)
         arm_bent_range = (10, 40)
+        arm_bent_angle = 180 - calculate_arm_bent_angle(keypoints, user_side)
         if arm_bent_angle < arm_bent_range[0]:
-            arm_bent_score = linear_score(arm_bent_angle, arm_bent_range[0], 0, arm_bent_range[0])
+            score = linear_score(
+                arm_bent_angle, arm_bent_range[0], 0, arm_bent_range[0]
+            )
         elif arm_bent_angle > arm_bent_range[1]:
-            arm_bent_score = linear_score(arm_bent_angle, arm_bent_range[1], 0, arm_bent_range[1])
+            score = linear_score(
+                arm_bent_angle, arm_bent_range[1], 0, arm_bent_range[1]
+            )
         else:
-            arm_bent_score = 1.0
-        posture_score["arm_bent_angle"] = weights_side["arm_bent_angle"] * arm_bent_score
+            score = 1.0
+        posture_score["arm_bent_angle"] = weights_side["arm_bent_angle"] * score
+        raw_scores_percent["arm_bent_angle"] = round(score * 100, 2)
 
         # Leg spread
+        leg_spread_optimal = 30
+        leg_spread_tolerance = 10
+        leg_spread_limit = 60
         leg_spread = determine_leg_spread(keypoints)
-        leg_spread_score = linear_score(leg_spread, 30, 10, 60)
+        leg_spread_score = linear_score(
+            leg_spread, leg_spread_optimal, leg_spread_tolerance, leg_spread_limit
+        )
         posture_score["leg_spread"] = weights_side["leg_spread"] * leg_spread_score
+        raw_scores_percent["leg_spread"] = round(leg_spread_score * 100, 2)
 
         # Back angle
+        back_angle_optimal = 0
+        back_angle_tolerance = 30
+        back_angle_limit = 45
         back_angle = calculate_back_angle(keypoints, user_side)
-        back_score = linear_score(back_angle, 0, 30, 45)
-        posture_score["back_angle"] = weights_side["back_angle"] * back_score
+        back_angle_score = linear_score(
+            back_angle, back_angle_optimal, back_angle_tolerance, back_angle_limit
+        )
+        posture_score["back_angle"] = weights_side["back_angle"] * back_angle_score
+        raw_scores_percent["back_angle"] = round(back_angle_score * 100, 2)
 
         measurements = {
             "knee_angle": knee_angle,
@@ -474,14 +542,9 @@ def posture_score_from_keypoints(keypoints):
             "leg_spread": leg_spread,
             "back_angle": back_angle,
         }
-        weights = weights_side
 
-    # Normalize measurements by their weights for reporting
-    for key in measurements:
-        if key in weights and weights[key] != 0:
-            measurements[key] = measurements[key] / weights[key] * 100
+        return posture_score, measurements, raw_scores_percent
 
-    return posture_score, measurements
 
 async def handle_inference(websocket, model_name: str):
     """Handle WebSocket connection with JWT authentication and inference"""
@@ -517,13 +580,14 @@ async def handle_inference(websocket, model_name: str):
                 continue
 
             keypoints = preds[0][0]["keypoints"]
-            posture_score, measurement = posture_score_from_keypoints(keypoints)
+            posture_score, measurement, raw_scores = posture_score_from_keypoints(keypoints)
 
             await websocket.send(
                 json.dumps(
                     {
                         "keypoints": keypoints,
                         "posture_score": posture_score,
+                        "raw_scores": raw_scores,
                         "measurements": measurement,
                     }
                 )
