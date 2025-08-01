@@ -53,7 +53,6 @@ class MediaAnalysisService:
             # Add token as query parameter for authentication
             uri = f"ws://{self.websocket_host}:{self.websocket_port}?token={self.service_token}"
             
-            # Configure connection with timeout and proper settings for websockets 15.0.1
             async with websockets.connect(
                 uri,
                 ping_interval=20,
@@ -136,18 +135,17 @@ class MediaAnalysisService:
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             
             # Process every nth frame to reduce computation
-            frame_skip = max(1, total_frames // 15)  # Process ~15 frames max
+            frame_skip = max(1, total_frames // 5)  # Process ~5 frames max
 
             frame_scores = []
             frame_keypoints = []
             frame_measurements = []
-            raw_scores_percent = []
+            raw_scores_percent_list = []
             frame_idx = 0
             
             # Connect to WebSocket inference service
             uri = f"ws://{self.websocket_host}:{self.websocket_port}?token={self.service_token}"
             
-            # Configure connection with timeout and proper settings for websockets 15.0.1
             async with websockets.connect(
                 uri,
                 ping_interval=20,
@@ -195,7 +193,7 @@ class MediaAnalysisService:
                                 frame_scores.append(posture_score)
                                 frame_measurements.append(measurements)
                                 frame_keypoints.append(keypoints)
-                                raw_scores_percent.append(raw_scores_percent)
+                                raw_scores_percent_list.append(raw_scores_percent)
 
                         except Exception as e:
                             print(f"Error processing frame {frame_idx}: {e}")
@@ -205,7 +203,7 @@ class MediaAnalysisService:
             cap.release()
             
             # Calculate final analysis results
-            result = self.aggregate_frame_scores(frame_scores, frame_measurements, raw_scores_percent, view, total_frames)
+            result = self.aggregate_frame_scores(frame_scores, frame_measurements, raw_scores_percent_list, frame_keypoints, view, total_frames)
             result["file_type"] = "video"
             return result
             
@@ -228,7 +226,7 @@ class MediaAnalysisService:
         frame_b64 = base64.b64encode(buffer).decode('utf-8')
         return frame_b64
 
-    def aggregate_frame_scores(self, frame_scores: List[Dict], frame_measurements: List[Dict], raw_scores_percent: List[Dict], view: str, total_frames: int) -> Dict:
+    def aggregate_frame_scores(self, frame_scores: List[Dict], frame_measurements: List[Dict], raw_scores_percent: List[Dict], frame_keypoints: List, view: str, total_frames: int) -> Dict:
         """Aggregate frame scores and measurements into final analysis result"""
         if not frame_scores:
             return {"error": "No frames processed", "view": view}
@@ -285,11 +283,18 @@ class MediaAnalysisService:
         # Calculate overall score
         overall_score = np.mean(list(final_scores.values())) if final_scores else 0
         
+        # Get representative keypoints from the middle frame (or first frame if fewer frames)
+        representative_keypoints = []
+        if frame_keypoints:
+            middle_idx = len(frame_keypoints) // 2
+            representative_keypoints = frame_keypoints[middle_idx] if frame_keypoints[middle_idx] else []
+        
         result = {
             "confidence": overall_score,
             "score": final_scores,
-            "final_raw_scores_percent": final_raw_scores_percent,
+            "raw_scores_percent": final_raw_scores_percent,  # Changed from "final_raw_scores_percent"
             "measurements": final_measurements,
+            "keypoints": representative_keypoints,  # Added keypoints
             "view": detected_side,
             "frame_count": len(frame_scores),
             "total_frames": total_frames,
