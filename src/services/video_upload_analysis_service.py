@@ -86,9 +86,10 @@ class MediaAnalysisService:
                 result = json.loads(response)
                 
                 if "keypoints" in result and "posture_score" in result:
-                    keypoints = result["keypoints"]
-                    posture_score = result["posture_score"]
+                    keypoints = result.get("keypoints", {})
+                    posture_score = result.get("posture_score", {})
                     measurements = result.get("measurements", {})
+                    raw_scores_percent = result.get("raw_scores_percent", {})
 
                     # Extract the detected side from posture_score if available
                     detected_view = posture_score.pop("side")
@@ -103,6 +104,7 @@ class MediaAnalysisService:
                         "detected_view": detected_view,
                         "confidence": confidence,
                         "score": posture_score,
+                        "raw_scores_percent": raw_scores_percent,
                         "measurements": measurements,
                         "frame_count": 1,
                         "total_frames": 1,
@@ -139,6 +141,7 @@ class MediaAnalysisService:
             frame_scores = []
             frame_keypoints = []
             frame_measurements = []
+            raw_scores_percent = []
             frame_idx = 0
             
             # Connect to WebSocket inference service
@@ -185,12 +188,14 @@ class MediaAnalysisService:
                             result = json.loads(response)
                             
                             if "keypoints" in result and "posture_score" in result:
-                                keypoints = result["keypoints"]
-                                posture_score = result["posture_score"]
+                                keypoints = result.get("keypoints", {})
+                                posture_score = result.get("posture_score", {})
                                 measurements = result.get("measurements", {})
+                                raw_scores_percent = result.get("raw_scores_percent", {})
                                 frame_scores.append(posture_score)
                                 frame_measurements.append(measurements)
                                 frame_keypoints.append(keypoints)
+                                raw_scores_percent.append(raw_scores_percent)
 
                         except Exception as e:
                             print(f"Error processing frame {frame_idx}: {e}")
@@ -200,7 +205,7 @@ class MediaAnalysisService:
             cap.release()
             
             # Calculate final analysis results
-            result = self.aggregate_frame_scores(frame_scores, frame_measurements, view, total_frames)
+            result = self.aggregate_frame_scores(frame_scores, frame_measurements, raw_scores_percent, view, total_frames)
             result["file_type"] = "video"
             return result
             
@@ -222,8 +227,8 @@ class MediaAnalysisService:
         _, buffer = cv2.imencode('.jpg', frame)
         frame_b64 = base64.b64encode(buffer).decode('utf-8')
         return frame_b64
-    
-    def aggregate_frame_scores(self, frame_scores: List[Dict], frame_measurements: List[Dict], view: str, total_frames: int) -> Dict:
+
+    def aggregate_frame_scores(self, frame_scores: List[Dict], frame_measurements: List[Dict], raw_scores_percent: List[Dict], view: str, total_frames: int) -> Dict:
         """Aggregate frame scores and measurements into final analysis result"""
         if not frame_scores:
             return {"error": "No frames processed", "view": view}
@@ -242,11 +247,24 @@ class MediaAnalysisService:
                         avg_scores[metric] = []
                     if isinstance(value, (int, float)):
                         avg_scores[metric].append(value)
-        
         final_scores = {}
         for metric, values in avg_scores.items():
             if values:
                 final_scores[metric] = np.mean(values)
+
+        #Calculate averege raw scores percent
+        avg_raw_scores = {}
+        for raw_score in raw_scores_percent:
+            if isinstance(raw_score, dict):
+                for metric, value in raw_score.items():
+                    if metric not in avg_raw_scores:
+                        avg_raw_scores[metric] = []
+                    if isinstance(value, (int, float)):
+                        avg_raw_scores[metric].append(value)
+        final_raw_scores_percent = {}
+        for metric, values in avg_raw_scores.items():
+            if values:
+                final_raw_scores_percent[metric] = np.mean(values)  
         
         # Calculate average measurements
         avg_measurements = {}
@@ -270,6 +288,7 @@ class MediaAnalysisService:
         result = {
             "confidence": overall_score,
             "score": final_scores,
+            "final_raw_scores_percent": final_raw_scores_percent,
             "measurements": final_measurements,
             "view": detected_side,
             "frame_count": len(frame_scores),

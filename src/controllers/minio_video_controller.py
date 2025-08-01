@@ -123,6 +123,7 @@ def run_inference_on_media(file_path, view, model_name):
 
         return {
             "score": result.get("score", {}),
+            "raw_scores_percent": result.get("raw_scores_percent", {}),
             "measurements": result.get("measurements", {}),
             "keypoints": result.get("keypoints", []),
             "view": result.get("detected_view", view),
@@ -168,6 +169,7 @@ def create_view_result_structure(result):
                 "leg_spread": posture_score.get("leg_spread", "unknown"),
                 "back_angle": posture_score.get("back_angle", "unknown"),
             },
+            "raw_scores_percent": result.get("raw_scores_percent", {}),
             "measurements": {
                 "knee_angle": result.get("measurements", {}).get(
                     "knee_angle", "unknown"
@@ -193,6 +195,7 @@ def create_view_result_structure(result):
                     "foot_to_shoulder_offset", 0.0
                 )
             },
+            "raw_scores_percent": result.get("raw_scores_percent", {}),
             "measurements": {
                 "foot_to_shoulder_offset_left": result.get("measurements", {}).get(
                     "foot_to_shoulder_offset_left", "unknown"

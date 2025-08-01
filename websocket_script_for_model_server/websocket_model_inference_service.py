@@ -432,10 +432,7 @@ def posture_score_from_keypoints(keypoints):
             weights_front["foot_to_shoulder_offset"] * average_score
         )
 
-        raw_scores_percent["foot_to_shoulder_offset_left"] = round(left_score * 100, 2)
-        raw_scores_percent["foot_to_shoulder_offset_right"] = round(
-            right_score * 100, 2
-        )
+        raw_scores_percent["foot_to_shoulder_offset"] = round(average_score * 100, 2)
 
         measurements = {
             "foot_to_shoulder_offset_left": left_offset,
@@ -500,17 +497,17 @@ def posture_score_from_keypoints(keypoints):
         arm_bent_range = (10, 40)
         arm_bent_angle = 180 - calculate_arm_bent_angle(keypoints, user_side)
         if arm_bent_angle < arm_bent_range[0]:
-            score = linear_score(
+            arm_bent_score = linear_score(
                 arm_bent_angle, arm_bent_range[0], 0, arm_bent_range[0]
             )
         elif arm_bent_angle > arm_bent_range[1]:
-            score = linear_score(
+            arm_bent_score = linear_score(
                 arm_bent_angle, arm_bent_range[1], 0, arm_bent_range[1]
             )
         else:
-            score = 1.0
-        posture_score["arm_bent_angle"] = weights_side["arm_bent_angle"] * score
-        raw_scores_percent["arm_bent_angle"] = round(score * 100, 2)
+            arm_bent_score = 1.0
+        posture_score["arm_bent_angle"] = weights_side["arm_bent_angle"] * arm_bent_score
+        raw_scores_percent["arm_bent_angle"] = round(arm_bent_score * 100, 2)
 
         # Leg spread
         leg_spread_optimal = 30
@@ -580,14 +577,14 @@ async def handle_inference(websocket, model_name: str):
                 continue
 
             keypoints = preds[0][0]["keypoints"]
-            posture_score, measurement, raw_scores = posture_score_from_keypoints(keypoints)
+            posture_score, measurement, raw_scores_percent = posture_score_from_keypoints(keypoints)
 
             await websocket.send(
                 json.dumps(
                     {
                         "keypoints": keypoints,
                         "posture_score": posture_score,
-                        "raw_scores": raw_scores,
+                        "raw_scores_percent": raw_scores_percent,
                         "measurements": measurement,
                     }
                 )
