@@ -84,7 +84,7 @@ def parse_minio_key(key):
         return None, None, None, None
 
 
-def run_inference_on_media(file_path, view, model_name):
+def run_inference_on_media(file_path, view, model_name, user_id=None, session_id=None):
     """Run pose inference on media file using WebSocket service"""
     try:
         print(f"Starting inference for: {file_path} with model {model_name}")
@@ -108,11 +108,11 @@ def run_inference_on_media(file_path, view, model_name):
 
             if file_extension in [".jpg", ".jpeg", ".png"]:
                 result = loop.run_until_complete(
-                    analyzer.analyze_image(file_path, view)
+                    analyzer.analyze_image(file_path, view, user_id, session_id)
                 )
             else:
                 result = loop.run_until_complete(
-                    analyzer.analyze_video(file_path, view)
+                    analyzer.analyze_video(file_path, view, user_id, session_id)
                 )
 
         finally:
@@ -222,7 +222,6 @@ def process_session_files(user_id, session_id, model_name, app):
                 analysis = Analysis(
                     user_id=user_id,
                     session_id=session_id,
-                    posture_result="{}",
                     feedback="",
                     status="in_progress",
                 )
@@ -277,8 +276,8 @@ def process_session_files(user_id, session_id, model_name, app):
                     decoded_key = unquote(file_key)
                     minio_client.fget_object("videos", decoded_key, tmp_path)
 
-                    # Run inference
-                    result = run_inference_on_media(tmp_path, view, model_name)
+                    # Run inference with user_id and session_id for detailed data storage
+                    result = run_inference_on_media(tmp_path, view, model_name, user_id, session_id)
 
                     if "error" not in result:
                         session_results[view] = result
@@ -302,8 +301,10 @@ def process_session_files(user_id, session_id, model_name, app):
 
                 feedback = generate_session_feedback(session_results)
 
-                # Serialize feedback to JSON string
-                analysis.posture_result = json.dumps(simplified_results)
+                # Note: Detailed analysis data is already saved to MinIO by the MediaAnalysisService
+                # during the analyze_video/analyze_image process, so we don't need to save it again here
+
+                # Store only feedback in database (JSON string)
                 analysis.feedback = json.dumps(feedback)  # Serialize feedback
                 analysis.status = "completed"
                 db.session.commit()
@@ -318,10 +319,29 @@ def process_session_files(user_id, session_id, model_name, app):
         except Exception as e:
             print(f"Error processing session: {str(e)}")
             traceback.print_exc()
-            if "analysis" in locals():
-                analysis.status = "failed"
-                analysis.feedback = f"Processing error: {str(e)}"
+            # Make sure analysis exists before trying to update it
+            try:
+                if "analysis" not in locals() or analysis is None:
+                    analysis = Analysis.query.filter_by(
+                        user_id=user_id, session_id=session_id
+                    ).first()
+                    if not analysis:
+                        analysis = Analysis(
+                            user_id=user_id,
+                            session_id=session_id,
+                            feedback="",
+                            status="failed",
+                        )
+                        db.session.add(analysis)
+                    else:
+                        analysis.status = "failed"
+                        analysis.feedback = f"Processing error: {str(e)}"
+                else:
+                    analysis.status = "failed"
+                    analysis.feedback = f"Processing error: {str(e)}"
                 db.session.commit()
+            except Exception as db_error:
+                print(f"Error updating analysis record: {str(db_error)}")
 
 
 def generate_session_feedback(session_results):
