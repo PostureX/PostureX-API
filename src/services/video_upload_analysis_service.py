@@ -10,6 +10,8 @@ from typing import Dict, List
 from ..config.websocket_config import WEBSOCKET_HOST
 from flask_jwt_extended import get_jwt_identity, decode_token
 from flask import request
+from .analysis_bucket_minio import save_detailed_analysis_data
+from .minio import client as minio_client
 
 class MediaAnalysisService:
     """Service for analyzing videos and images using the WebSocket inference service"""
@@ -29,18 +31,18 @@ class MediaAnalysisService:
         image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}
         return os.path.splitext(file_path.lower())[1] in image_extensions
     
-    async def analyze_media(self, file_path: str, view: str) -> Dict:
+    async def analyze_media(self, file_path: str, view: str, user_id: str = None, session_id: str = None) -> Dict:
         """
         Analyze a video or image file by sending frames to the WebSocket inference service
         """
         if self.is_image_file(file_path):
-            return await self.analyze_image(file_path, view)
+            return await self.analyze_image(file_path, view, user_id, session_id)
         elif self.is_video_file(file_path):
-            return await self.analyze_video(file_path, view)
+            return await self.analyze_video(file_path, view, user_id, session_id)
         else:
             return {"error": f"Unsupported file type: {file_path}", "view": view}
     
-    async def analyze_image(self, image_path: str, view: str = None) -> Dict:
+    async def analyze_image(self, image_path: str, view: str = None, user_id: str = None, session_id: str = None) -> Dict:
         """
         Analyze a single image file using WebSocket connection similar to JavaScript client
         """
@@ -94,14 +96,30 @@ class MediaAnalysisService:
                     detected_view = posture_score.pop("side")
                     print(f"Detected view: {detected_view}, result: {result}")
                     
-                    # Calculate confidence from numeric values only (exclude 'side' field)
+                    # Save detailed analysis data to MinIO if user_id and session_id are provided
+                    if user_id and session_id:
+                        detailed_data = {
+                            "file_type": "image",
+                            "view": view,
+                            "detected_view": detected_view,
+                            "analysis_timestamp": asyncio.get_event_loop().time(),
+                            "image_data": {
+                                "keypoints": keypoints,
+                                "score": posture_score,
+                                "raw_scores_percent": raw_scores_percent,
+                                "measurements": measurements
+                            }
+                        }
+                        save_detailed_analysis_data(user_id, session_id, detected_view, detailed_data)
+                    
+                    # Calculate overall posture score from numeric values only (exclude 'side' field)
                     numeric_scores = {k: v for k, v in posture_score.items() if k != "side" and isinstance(v, (int, float))}
-                    confidence = sum(numeric_scores.values()) / len(numeric_scores.values()) if numeric_scores else 0
+                    overall_posture_score = sum(numeric_scores.values()) / len(numeric_scores.values()) if numeric_scores else 0
                     
                     return {
                         "keypoints": keypoints,
                         "detected_view": detected_view,
-                        "confidence": confidence,
+                        "overall_posture_score": overall_posture_score,
                         "score": posture_score,
                         "raw_scores_percent": raw_scores_percent,
                         "measurements": measurements,
@@ -126,22 +144,58 @@ class MediaAnalysisService:
             print(f"Error in analyze_image: {str(e)}")
             return {"error": str(e), "view": view}
     
-    async def analyze_video(self, video_path: str, view: str = None) -> Dict:
+    async def analyze_video(self, video_path: str, view: str = None, user_id: str = None, session_id: str = None) -> Dict:
         """
         Analyze a video file by sending frames to the WebSocket inference service
         """
         try:
-            cap = cv2.VideoCapture(video_path)
+            # Try different OpenCV backends for better compatibility
+            cap = None
+            backends = [cv2.CAP_FFMPEG, cv2.CAP_DSHOW, cv2.CAP_ANY]
+            
+            for backend in backends:
+                try:
+                    cap = cv2.VideoCapture(video_path, backend)
+                    if cap.isOpened():
+                        print(f"Successfully opened video with backend: {backend}")
+                        break
+                    else:
+                        cap.release()
+                        cap = None
+                except Exception as e:
+                    print(f"Failed to open video with backend {backend}: {e}")
+                    if cap:
+                        cap.release()
+                    cap = None
+            
+            if cap is None:
+                return {"error": f"Could not open video file: {video_path}", "view": view}
+            
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            
+            if total_frames <= 0:
+                cap.release()
+                return {"error": f"Invalid video file - no frames detected: {video_path}", "view": view}
             
             # Process every nth frame to reduce computation
-            frame_skip = max(1, total_frames // 5)  # Process ~5 frames max
+            # For detailed analysis, process more frames. You can adjust this value:
+            # frame_skip = 1 means process every frame
+            # frame_skip = 5 means process every 5th frame
+            # frame_skip = max(1, total_frames // 30) means process roughly 30 frames
+            frame_skip = max(1, total_frames // 30) if total_frames > 30 else 1
+            
+            print(f"Video info: {total_frames} frames, {fps} FPS")
+            print(f"Frame skip value: {frame_skip}, will process approximately {total_frames // frame_skip} frames")
 
             frame_scores = []
             frame_keypoints = []
             frame_measurements = []
             raw_scores_percent_list = []
             frame_idx = 0
+            
+            # Collect detailed frame data for MinIO storage
+            detailed_frames_data = []
             
             # Connect to WebSocket inference service
             uri = f"ws://{self.websocket_host}:{self.websocket_port}?token={self.service_token}"
@@ -171,6 +225,7 @@ class MediaAnalysisService:
                         break
                     
                     if frame_idx % frame_skip == 0:
+                        print(f"Processing frame {frame_idx}/{total_frames}")
                         try:
                             # Convert frame to base64
                             frame_b64 = self.frame_to_base64(frame)
@@ -190,10 +245,23 @@ class MediaAnalysisService:
                                 posture_score = result.get("posture_score", {})
                                 measurements = result.get("measurements", {})
                                 raw_scores_percent = result.get("raw_scores_percent", {})
+                                
                                 frame_scores.append(posture_score)
                                 frame_measurements.append(measurements)
                                 frame_keypoints.append(keypoints)
                                 raw_scores_percent_list.append(raw_scores_percent)
+                                
+                                # Collect detailed frame data for MinIO storage
+                                if user_id and session_id:
+                                    frame_data = {
+                                        "frame_index": frame_idx,
+                                        "timestamp": frame_idx / fps if fps > 0 else 0,
+                                        "keypoints": keypoints,
+                                        "score": posture_score.copy(),  # Make a copy since we'll modify posture_score later
+                                        "raw_scores_percent": raw_scores_percent,
+                                        "measurements": measurements
+                                    }
+                                    detailed_frames_data.append(frame_data)
 
                         except Exception as e:
                             print(f"Error processing frame {frame_idx}: {e}")
@@ -202,9 +270,34 @@ class MediaAnalysisService:
             
             cap.release()
             
+            print(f"Finished processing video. Total frames: {total_frames}, Processed frames: {len(frame_scores)}")
+            
             # Calculate final analysis results
             result = self.aggregate_frame_scores(frame_scores, frame_measurements, raw_scores_percent_list, frame_keypoints, view, total_frames)
             result["file_type"] = "video"
+            
+            # Save detailed frame data to MinIO if user_id and session_id are provided
+            if user_id and session_id and detailed_frames_data:
+                detected_view = result.get("view", view)
+                detailed_data = {
+                    "file_type": "video",
+                    "view": view,
+                    "detected_view": detected_view,
+                    "analysis_timestamp": asyncio.get_event_loop().time(),
+                    "total_frames": total_frames,
+                    "processed_frames": len(detailed_frames_data),
+                    "frame_skip": frame_skip,
+                    "frames_data": detailed_frames_data,
+                    "aggregated_results": {
+                        "overall_posture_score": result.get("overall_posture_score"),
+                        "score": result.get("score"),
+                        "raw_scores_percent": result.get("raw_scores_percent"),
+                        "measurements": result.get("measurements"),
+                        "keypoints": result.get("keypoints")
+                    }
+                }
+                save_detailed_analysis_data(user_id, session_id, detected_view, detailed_data)
+            
             return result
             
         except websockets.exceptions.ConnectionClosed as e:
@@ -290,7 +383,7 @@ class MediaAnalysisService:
             representative_keypoints = frame_keypoints[middle_idx] if frame_keypoints[middle_idx] else []
         
         result = {
-            "confidence": overall_score,
+            "overall_posture_score": overall_score,
             "score": final_scores,
             "raw_scores_percent": final_raw_scores_percent,  # Changed from "final_raw_scores_percent"
             "measurements": final_measurements,
@@ -303,16 +396,51 @@ class MediaAnalysisService:
         
         return result
     
-    def analyze_media_sync(self, file_path: str, view: str) -> Dict:
+    def analyze_media_sync(self, file_path: str, view: str, user_id: str = None, session_id: str = None) -> Dict:
         
         """Synchronous wrapper for media analysis"""
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            return loop.run_until_complete(self.analyze_media(file_path, view))
+            return loop.run_until_complete(self.analyze_media(file_path, view, user_id, session_id))
         except Exception as e:
             return {"error": str(e), "file_path": file_path}
         finally:
             loop.close()
+
+def delete_session_video_files(user_id: str, session_id: str) -> bool:
+    """
+    Delete all video files for a session from the videos bucket
+    
+    Args:
+        user_id: User identifier
+        session_id: Session identifier
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        videos_bucket = "videos"
+        
+        # Check if videos bucket exists
+        if not minio_client.bucket_exists(videos_bucket):
+            print(f"Videos bucket '{videos_bucket}' does not exist")
+            return True  # Consider this successful since there are no files to delete
+        
+        prefix = f"{user_id}/{session_id}/"
+        objects = minio_client.list_objects(videos_bucket, prefix=prefix, recursive=True)
+        
+        deleted_count = 0
+        for obj in objects:
+            minio_client.remove_object(videos_bucket, obj.object_name)
+            deleted_count += 1
+            print(f"Deleted video file: {obj.object_name}")
+            
+        print(f"Deleted {deleted_count} video files for session {session_id}")
+        return True
+        
+    except Exception as e:
+        print(f"Error deleting session video files: {str(e)}")
+        return False
 
 VideoAnalysisService = MediaAnalysisService

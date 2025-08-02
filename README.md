@@ -423,11 +423,137 @@ Authorization: Bearer <jwt_token>
 }
 ```
 
+#### Re-attempt Analysis
+```http
+POST /api/analysis/reattempt/<analysis_id>
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "model": "cx"  // Optional: specify model to use (defaults to 'cx')
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Analysis re-attempt initiated successfully",
+  "analysis_id": 1,
+  "model": "cx",
+  "status": "in_progress"
+}
+```
+
+**Error Response (Invalid Model):**
+```json
+{
+  "error": "Invalid model: invalid_model. Available models: ['cx']",
+  "available_models": ["cx"]
+}
+```
+
+#### Get Detailed Analysis Data
+Get detailed frame-by-frame analysis data stored in MinIO:
+
+```http
+GET /api/analysis/detailed/<session_id>
+Authorization: Bearer <jwt_token>
+
+# Optional: Get specific side data
+GET /api/analysis/detailed/<session_id>?side=front
+```
+
+**Response (List available sides):**
+```json
+{
+  "available_sides": ["front", "left"],
+  "files": [
+    "user123/session_456/detailed_front.json",
+    "user123/session_456/detailed_left.json"
+  ]
+}
+```
+
+**Response (Specific side - Video):**
+```json
+{
+  "file_type": "video",
+  "view": "front",
+  "detected_view": "front",
+  "analysis_timestamp": 1641234567.89,
+  "total_frames": 150,
+  "processed_frames": 5,
+  "frame_skip": 30,
+  "frames_data": [
+    {
+      "frame_index": 0,
+      "timestamp": 0.0,
+      "keypoints": {...},
+      "score": {...},
+      "raw_scores_percent": {...},
+      "measurements": {...}
+    },
+    {
+      "frame_index": 30,
+      "timestamp": 1.0,
+      "keypoints": {...},
+      "score": {...},
+      "raw_scores_percent": {...},
+      "measurements": {...}
+    }
+  ],
+  "aggregated_results": {
+    "confidence": 85.2,
+    "score": {...},
+    "raw_scores_percent": {...},
+    "measurements": {...},
+    "keypoints": {...}
+  }
+}
+```
+
+**Response (Specific side - Image):**
+```json
+{
+  "file_type": "image",
+  "view": "front",
+  "detected_view": "front", 
+  "analysis_timestamp": 1641234567.89,
+  "image_data": {
+    "keypoints": {...},
+    "score": {...},
+    "raw_scores_percent": {...},
+    "measurements": {...}
+  }
+}
+```
+
 #### Delete Analysis
 ```http
 DELETE /api/analysis/<analysis_id>
 Authorization: Bearer <jwt_token>
 ```
+
+**Response (Success):**
+```json
+{
+  "message": "Analysis and associated files deleted successfully",
+  "analysis_id": 123,
+  "session_id": "session_456"
+}
+```
+
+**Response (Partial Success):**
+```json
+{
+  "message": "Analysis deleted from database, but some analysis files may remain in storage",
+  "analysis_id": 123,
+  "session_id": "session_456",
+  "warning": "Failed to delete some analysis files from MinIO"
+}
+```
+
+**Note:** This endpoint deletes both the analysis record from the database and all associated detailed analysis files from the MinIO `analysis-data` bucket.
 
 ---
 
