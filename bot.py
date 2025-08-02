@@ -7,9 +7,9 @@ from telegramify_markdown import markdownify
 
 from src import create_app  # Import your app factory
 from src.config.database import db
-from src.models.user import User
-
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")  # Set your bot token in environment variable
+from src.config.app_config import AppConfig
+from src.models import User, Analysis
+from src.services.telegram_bot import send_analysis
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -54,7 +54,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def unlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def unlink(update: Update):
     user = User.query.filter_by(telegram_id=update.message.from_user.id).first()
     if user:
         user.telegram_id = None
@@ -70,11 +70,48 @@ async def unlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="MarkdownV2",
     )
 
+async def get_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = User.query.filter_by(telegram_id=update.message.from_user.id).first()
+    if not user:
+        return await update.message.reply_text(
+            markdownify("You are not linked to any PostureX account."),
+            parse_mode="MarkdownV2",
+        )
+
+    args = context.args
+    if args and len(args) > 0:
+        try:
+            analysis_id = int(args[0])
+            analysis = Analysis.query.filter_by(id=analysis_id, user_id=user.id).first()
+            if not analysis:
+                return await update.message.reply_text(
+                    markdownify("Analysis not found."),
+                    parse_mode="MarkdownV2",
+                )
+        except ValueError:
+            return await update.message.reply_text(
+                markdownify("Invalid analysis ID."),
+                parse_mode="MarkdownV2",
+            )
+    else:
+        # Fetch the latest analysis for the user
+        analysis = Analysis.query.filter_by(user_id=user.id).order_by(Analysis.created_at.desc()).first()
+        if not analysis:
+            return await update.message.reply_text(
+                markdownify("No analysis found."),
+                parse_mode="MarkdownV2",
+            )
+
+    await send_analysis(user.id, analysis)
 
 if __name__ == "__main__":
     flask_app = create_app()
     with flask_app.app_context():
+        config = AppConfig()
+        TELEGRAM_TOKEN = config.telegram_bot_token
+
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
         app.add_handler(CommandHandler("start", start))
         app.add_handler(CommandHandler("unlink", unlink))
+        app.add_handler(CommandHandler("analysis", get_analysis))
         app.run_polling()
