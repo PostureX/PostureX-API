@@ -26,11 +26,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user.tele_link_expires_at
                 and user.tele_link_expires_at < datetime.datetime.now()
             ):
-                return await update.message.reply_text(
+                return await update.message.reply_markdown_v2(
                     markdownify(
                         "Your link has expired. Please generate a new link on the PostureX website."
-                    ),
-                    parse_mode="MarkdownV2",
+                    )
                 )
 
             # set telegram id
@@ -41,17 +40,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             db.session.commit()
 
-            return await update.message.reply_text(
+            return await update.message.reply_markdown_v2(
                 markdownify(
                     f"Hello {user.name}! You have successfully linked this telegram account to your PostureX account. You will now receive updates about your gun posture analysis results. Use /unlink if you wish to unlink.",
-                ),
-                parse_mode="MarkdownV2",
+                )
             )
 
-    return await update.message.reply_text(
-        markdownify(f"Hello {update.message.from_user.first_name}! "),
-        parse_mode="MarkdownV2",
-    )
+    markdownify_text = markdownify(f"Hello {update.message.from_user.first_name}!")
+    print(markdownify_text)
+
+    return await update.message.reply_markdown_v2(markdownify_text)
 
 
 async def unlink(update: Update):
@@ -59,23 +57,21 @@ async def unlink(update: Update):
     if user:
         user.telegram_id = None
         db.session.commit()
-        return await update.message.reply_text(
+        return await update.message.reply_markdown_v2(
             markdownify(
                 "You have successfully unlinked your telegram account from your PostureX account.",
-            ),
-            parse_mode="MarkdownV2",
+            )
         )
-    return await update.message.reply_text(
-        markdownify("You are not linked to any PostureX account."),
-        parse_mode="MarkdownV2",
+    return await update.message.reply_markdown_v2(
+        markdownify("You are not linked to any PostureX account.")
     )
+
 
 async def get_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = User.query.filter_by(telegram_id=update.message.from_user.id).first()
     if not user:
-        return await update.message.reply_text(
-            markdownify("You are not linked to any PostureX account."),
-            parse_mode="MarkdownV2",
+        return await update.message.reply_markdown_v2(
+            markdownify("You are not linked to any PostureX account.")
         )
 
     args = context.args
@@ -84,25 +80,27 @@ async def get_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
             analysis_id = int(args[0])
             analysis = Analysis.query.filter_by(id=analysis_id, user_id=user.id).first()
             if not analysis:
-                return await update.message.reply_text(
-                    markdownify("Analysis not found."),
-                    parse_mode="MarkdownV2",
+                return await update.message.reply_markdown_v2(
+                    markdownify("Analysis not found.")
                 )
         except ValueError:
-            return await update.message.reply_text(
-                markdownify("Invalid analysis ID."),
-                parse_mode="MarkdownV2",
+            return await update.message.reply_markdown_v2(
+                markdownify("Invalid analysis ID.")
             )
     else:
         # Fetch the latest analysis for the user
-        analysis = Analysis.query.filter_by(user_id=user.id).order_by(Analysis.created_at.desc()).first()
+        analysis = (
+            Analysis.query.filter_by(user_id=user.id)
+            .order_by(Analysis.created_at.desc())
+            .first()
+        )
         if not analysis:
-            return await update.message.reply_text(
-                markdownify("No analysis found."),
-                parse_mode="MarkdownV2",
+            return await update.message.reply_markdown_v2(
+                markdownify("No analysis found.")
             )
 
     await send_analysis(user.id, analysis)
+
 
 if __name__ == "__main__":
     flask_app = create_app()
