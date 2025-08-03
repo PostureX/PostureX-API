@@ -410,13 +410,13 @@ def minio_webhook():
                 f"Starting session processing: {user_id}/{session_id} with model {model_name}"
             )
 
-            # Check if session is already being processed or completed
+            # Check if session is already being processed
             existing_analysis = Analysis.query.filter_by(
                 user_id=user_id, session_id=session_id
             ).first()
             
             if existing_analysis and existing_analysis.status in ["in_progress"]:
-                print(f"Session {session_id} is already being processed or completed, skipping")
+                print(f"Session {session_id} is already being processed, skipping")
                 continue
 
             # Capture the app object before starting the timer
