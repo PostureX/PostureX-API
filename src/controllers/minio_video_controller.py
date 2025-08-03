@@ -222,6 +222,7 @@ def process_session_files(user_id, session_id, model_name, app):
                 analysis = Analysis(
                     user_id=user_id,
                     session_id=session_id,
+                    model_name=model_name,
                     status="in_progress",
                 )
                 db.session.add(analysis)
