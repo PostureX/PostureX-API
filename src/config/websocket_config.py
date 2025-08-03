@@ -14,8 +14,8 @@ MODEL_CONFIGS = {
     },
     'gy': {
         'port': 8896,
-        'model_config': None,
-        'checkpoint_path': None,
-        'device': None
+        'model_config': './posture-x-models/td-hm_hrnet-w48_dark-8xb32-210e_coco-wholebody-384x288.py',
+        'checkpoint_path': './posture-x-models/best_coco-wholebody_AP_epoch_160.pth',
+        'device': 'cuda'
     }
 }
