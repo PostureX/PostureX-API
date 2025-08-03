@@ -86,7 +86,7 @@ class MediaAnalysisService:
                 response = await websocket.recv()
                 result = json.loads(response)
                 
-                if "keypoints" in result and "posture_score" in result:
+                if result:
                     keypoints = result.get("keypoints", {})
                     posture_score = result.get("posture_score", {})
                     measurements = result.get("measurements", {})
@@ -128,6 +128,7 @@ class MediaAnalysisService:
                         "analysis_timestamp": asyncio.get_event_loop().time(),
                         "file_type": "image",
                     }
+                
                 else:
                     return {"error": f"Invalid response from inference service: {result}", "view": view}
             
@@ -147,6 +148,8 @@ class MediaAnalysisService:
     async def analyze_video(self, video_path: str, view: str = None, user_id: str = None, session_id: str = None) -> Dict:
         """
         Analyze a video file by sending frames to the WebSocket inference service
+
+        Returns aggregated results including posture scores, measurements, and keypoints.
         """
         try:
             # Try different OpenCV backends for better compatibility
@@ -179,17 +182,12 @@ class MediaAnalysisService:
                 return {"error": f"Invalid video file - no frames detected: {video_path}", "view": view}
             
             # Process every nth frame to reduce computation
-            # For detailed analysis, process more frames. You can adjust this value:
-            # frame_skip = 1 means process every frame
-            # frame_skip = 5 means process every 5th frame
-            # frame_skip = max(1, total_frames // 30) means process roughly 30 frames
-            frame_skip = max(1, total_frames // 30) if total_frames > 30 else 1
+            frame_skip = max(1, total_frames // 5) if total_frames > 30 else 1
             
             print(f"Video info: {total_frames} frames, {fps} FPS")
             print(f"Frame skip value: {frame_skip}, will process approximately {total_frames // frame_skip} frames")
 
             frame_scores = []
-            frame_keypoints = []
             frame_measurements = []
             raw_scores_percent_list = []
             frame_idx = 0
@@ -248,7 +246,6 @@ class MediaAnalysisService:
                                 
                                 frame_scores.append(posture_score)
                                 frame_measurements.append(measurements)
-                                frame_keypoints.append(keypoints)
                                 raw_scores_percent_list.append(raw_scores_percent)
                                 
                                 # Collect detailed frame data for MinIO storage
@@ -273,7 +270,7 @@ class MediaAnalysisService:
             print(f"Finished processing video. Total frames: {total_frames}, Processed frames: {len(frame_scores)}")
             
             # Calculate final analysis results
-            result = self.aggregate_frame_scores(frame_scores, frame_measurements, raw_scores_percent_list, frame_keypoints, view, total_frames)
+            result = self.aggregate_frame_scores(frame_scores, frame_measurements, raw_scores_percent_list, view, total_frames)
             result["file_type"] = "video"
             
             # Save detailed frame data to MinIO if user_id and session_id are provided
@@ -288,12 +285,10 @@ class MediaAnalysisService:
                     "processed_frames": len(detailed_frames_data),
                     "frame_skip": frame_skip,
                     "frames_data": detailed_frames_data,
-                    "aggregated_results": {
-                        "overall_posture_score": result.get("overall_posture_score"),
-                        "score": result.get("score"),
-                        "raw_scores_percent": result.get("raw_scores_percent"),
-                        "measurements": result.get("measurements"),
-                        "keypoints": result.get("keypoints")
+                    "aggregate_results": {
+                        "score": result.get("score", {}),
+                        "raw_score_percent": result.get("raw_scores_percent", {}),
+                        "measurements": result.get("measurements", {})
                     }
                 }
                 save_detailed_analysis_data(user_id, session_id, detected_view, detailed_data)
@@ -376,24 +371,17 @@ class MediaAnalysisService:
         # Calculate overall score
         overall_score = np.mean(list(final_scores.values())) if final_scores else 0
         
-        # Get representative keypoints from the middle frame (or first frame if fewer frames)
-        representative_keypoints = []
-        if frame_keypoints:
-            middle_idx = len(frame_keypoints) // 2
-            representative_keypoints = frame_keypoints[middle_idx] if frame_keypoints[middle_idx] else []
-        
         result = {
             "overall_posture_score": overall_score,
             "score": final_scores,
             "raw_scores_percent": final_raw_scores_percent,  # Changed from "final_raw_scores_percent"
             "measurements": final_measurements,
-            "keypoints": representative_keypoints,  # Added keypoints
-            "view": detected_side,
+            "detected_view": detected_side,
             "frame_count": len(frame_scores),
             "total_frames": total_frames,
             "analysis_timestamp": asyncio.get_event_loop().time()
         }
-        
+
         return result
     
     def analyze_media_sync(self, file_path: str, view: str, user_id: str = None, session_id: str = None) -> Dict:

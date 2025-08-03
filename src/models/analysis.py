@@ -9,7 +9,6 @@ class Analysis(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey(f'{db_config.schema_name}.users.id'), nullable=False)
     session_id = db.Column(db.Text, nullable=False)
-    feedback = db.Column(db.Text, nullable=False)
     status = db.Column(db.String(50), default='in_progress')  # e.g., 'in_progress', 'completed', 'failed'
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -22,7 +21,6 @@ class Analysis(db.Model):
             'id': self.id,
             'user_id': self.user_id,
             'session_id': self.session_id,
-            'feedback': self.feedback,
             'status': self.status,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
@@ -33,7 +31,6 @@ class Analysis(db.Model):
         analysis = cls()
         analysis.user_id = data.get('user_id', 0)
         analysis.session_id = data.get('session_id', '')
-        analysis.feedback = data.get('feedback', '')
         analysis.status = data.get('status', 'pending')
         if data.get('created_at'):
             analysis.created_at = data.get('created_at')

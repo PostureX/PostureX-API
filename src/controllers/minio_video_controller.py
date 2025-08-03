@@ -3,6 +3,7 @@ from src.config.database import db
 from src.models.analysis import Analysis
 from src.services.minio import client as minio_client
 from src.services.video_upload_analysis_service import MediaAnalysisService
+from src.services.analysis_bucket_minio import save_feedback_data
 from src.config.websocket_config import WEBSOCKET_HOST
 from flask_jwt_extended import (
     decode_token,
@@ -125,8 +126,7 @@ def run_inference_on_media(file_path, view, model_name, user_id=None, session_id
             "score": result.get("score", {}),
             "raw_scores_percent": result.get("raw_scores_percent", {}),
             "measurements": result.get("measurements", {}),
-            "keypoints": result.get("keypoints", []),
-            "view": result.get("detected_view", view),
+            "view": result.get("detected_view", "unknown"),
             "model": model_name,
             "file_type": (
                 "image" if file_extension in [".jpg", ".jpeg", ".png"] else "video"
@@ -138,74 +138,74 @@ def run_inference_on_media(file_path, view, model_name, user_id=None, session_id
         return {"error": f"Inference failed: {str(e)}", "view": view}
 
 
-def create_view_result_structure(result):
-    """Create standardized view result structure"""
-    # The side information is now in the posture_score object
-    posture_score = result.get("score", {})
-    side = posture_score.get("side", None)
+# def create_view_result_structure(result):
+#     """Create standardized view result structure"""
+#     # The side information is now in the posture_score object
+#     posture_score = result.get("score", {})
+#     side = posture_score.get("side", None)
 
-    # Also check the detected_view from the main result
-    if side is None:
-        side = result.get("detected_view", None)
+#     # Also check the detected_view from the main result
+#     if side is None:
+#         side = result.get("detected_view", None)
 
-    # Also check the view field from the main result
-    if side is None:
-        side = result.get("view", None)
+#     # Also check the view field from the main result
+#     if side is None:
+#         side = result.get("view", None)
 
-    if side is None:
-        return {
-            "score": "error(no side detected)",
-            "measurements": "error(no side detected)",
-            "keypoints": "error(no side detected)",
-        }
+#     if side is None:
+#         return {
+#             "score": "error(no side detected)",
+#             "measurements": "error(no side detected)",
+#             "keypoints": "error(no side detected)",
+#         }
 
-    if side in ["left", "right"]:
-        return {
-            "score": {
-                "knee_angle": posture_score.get("knee_angle", "unknown"),
-                "head_tilt": posture_score.get("head_tilt", "unknown"),
-                "arm_angle": posture_score.get("arm_angle", "unknown"),
-                "arm_bent_angle": posture_score.get("arm_bent_angle", "unknown"),
-                "leg_spread": posture_score.get("leg_spread", "unknown"),
-                "back_angle": posture_score.get("back_angle", "unknown"),
-            },
-            "raw_scores_percent": result.get("raw_scores_percent", {}),
-            "measurements": {
-                "knee_angle": result.get("measurements", {}).get(
-                    "knee_angle", "unknown"
-                ),
-                "head_tilt": result.get("measurements", {}).get("head_tilt", "unknown"),
-                "arm_angle": result.get("measurements", {}).get("arm_angle", "unknown"),
-                "arm_bent_angle": result.get("measurements", {}).get(
-                    "arm_bent_angle", "unknown"
-                ),
-                "leg_spread": result.get("measurements", {}).get(
-                    "leg_spread", "unknown"
-                ),
-                "back_angle": result.get("measurements", {}).get(
-                    "back_angle", "unknown"
-                ),
-            },
-            "keypoints": result.get("keypoints", []),
-        }
-    elif side in ["front", "back"]:
-        return {
-            "score": {
-                "foot_to_shoulder_offset": posture_score.get(
-                    "foot_to_shoulder_offset", 0.0
-                )
-            },
-            "raw_scores_percent": result.get("raw_scores_percent", {}),
-            "measurements": {
-                "foot_to_shoulder_offset_left": result.get("measurements", {}).get(
-                    "foot_to_shoulder_offset_left", "unknown"
-                ),
-                "foot_to_shoulder_offset_right": result.get("measurements", {}).get(
-                    "foot_to_shoulder_offset_right", "unknown"
-                ),
-            },
-            "keypoints": result.get("keypoints", []),
-        }
+#     if side in ["left", "right"]:
+#         return {
+#             "score": {
+#                 "knee_angle": posture_score.get("knee_angle", "unknown"),
+#                 "head_tilt": posture_score.get("head_tilt", "unknown"),
+#                 "arm_angle": posture_score.get("arm_angle", "unknown"),
+#                 "arm_bent_angle": posture_score.get("arm_bent_angle", "unknown"),
+#                 "leg_spread": posture_score.get("leg_spread", "unknown"),
+#                 "back_angle": posture_score.get("back_angle", "unknown"),
+#             },
+#             "raw_scores_percent": result.get("raw_scores_percent", {}),
+#             "measurements": {
+#                 "knee_angle": result.get("measurements", {}).get(
+#                     "knee_angle", "unknown"
+#                 ),
+#                 "head_tilt": result.get("measurements", {}).get("head_tilt", "unknown"),
+#                 "arm_angle": result.get("measurements", {}).get("arm_angle", "unknown"),
+#                 "arm_bent_angle": result.get("measurements", {}).get(
+#                     "arm_bent_angle", "unknown"
+#                 ),
+#                 "leg_spread": result.get("measurements", {}).get(
+#                     "leg_spread", "unknown"
+#                 ),
+#                 "back_angle": result.get("measurements", {}).get(
+#                     "back_angle", "unknown"
+#                 ),
+#             },
+#             "keypoints": result.get("keypoints", []),
+#         }
+#     elif side in ["front", "back"]:
+#         return {
+#             "score": {
+#                 "foot_to_shoulder_offset": posture_score.get(
+#                     "foot_to_shoulder_offset", 0.0
+#                 )
+#             },
+#             "raw_scores_percent": result.get("raw_scores_percent", {}),
+#             "measurements": {
+#                 "foot_to_shoulder_offset_left": result.get("measurements", {}).get(
+#                     "foot_to_shoulder_offset_left", "unknown"
+#                 ),
+#                 "foot_to_shoulder_offset_right": result.get("measurements", {}).get(
+#                     "foot_to_shoulder_offset_right", "unknown"
+#                 ),
+#             },
+#             "keypoints": result.get("keypoints", []),
+#         }
 
 
 def process_session_files(user_id, session_id, model_name, app):
@@ -293,16 +293,10 @@ def process_session_files(user_id, session_id, model_name, app):
 
             # Update analysis with results
             if session_results:
-                # Create simplified format with only uploaded views
-                simplified_results = {}
-
-                for view, result in session_results.items():
-                    simplified_results[view] = create_view_result_structure(result)
-
                 feedback = generate_session_feedback(session_results)
 
-                # Note: Detailed analysis data is already saved to MinIO by the MediaAnalysisService
-                # during the analyze_video/analyze_image process, so we don't need to save it again here
+                # Save feedback to MinIO as JSON file
+                save_feedback_data(user_id, session_id, feedback)
 
                 # Store only feedback in database (JSON string)
                 analysis.feedback = json.dumps(feedback)  # Serialize feedback
@@ -394,11 +388,6 @@ def generate_session_feedback(session_results):
     return response.text if response and response.text else "No feedback generated"
 
 
-def delayed_session_processing(user_id, session_id, model_name, app):
-    """Wrapper function for delayed session processing"""
-    process_session_files(user_id, session_id, model_name, app)
-
-
 @minio_hook_bp.route("/webhook", methods=["POST"])
 def minio_webhook():
     """Handle MinIO webhook notifications for media uploads"""
@@ -434,7 +423,7 @@ def minio_webhook():
             # Add a small delay to allow all files to be uploaded
             threading.Timer(
                 2.0,  # 2 second delay
-                delayed_session_processing,
+                process_session_files,
                 args=(user_id, session_id, model_name, app),
             ).start()
 
