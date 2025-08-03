@@ -94,14 +94,12 @@ async def send_analysis(user_id: int, analysis: Analysis, parse_mode="MarkdownV2
     if analysis_dict["status"] == "failed":
         return await bot.send_message(
             chat_id=user.telegram_id,
-            text=markdownify(f"An error occured while trying to process your analysis with ID `{analysis.id}`. Please try again."),
+            text=markdownify(f"An error occured while trying to process your analysis with ID `{analysis.id}`. You may try again [here]({CONFIG.frontend_url}/analysis/{analysis.id})."),
             parse_mode=parse_mode,
         )
 
-    formatted_message = format_analysis_message(analysis_dict)
-
     await bot.send_message(
-        chat_id=user.telegram_id, text=formatted_message, parse_mode=parse_mode
+        chat_id=user.telegram_id, text="Your analysis is ready! You may [view it here]({CONFIG.frontend_url}/analysis/{analysis.id}).", parse_mode=parse_mode
     )
 
 
