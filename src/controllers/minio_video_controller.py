@@ -222,7 +222,6 @@ def process_session_files(user_id, session_id, model_name, app):
                 analysis = Analysis(
                     user_id=user_id,
                     session_id=session_id,
-                    feedback="",
                     status="in_progress",
                 )
                 db.session.add(analysis)
@@ -241,7 +240,6 @@ def process_session_files(user_id, session_id, model_name, app):
 
             if not objects:
                 analysis.status = "failed"
-                analysis.feedback = "No files found in session"
                 db.session.commit()
                 return
 
@@ -298,15 +296,13 @@ def process_session_files(user_id, session_id, model_name, app):
                 # Save feedback to MinIO as JSON file
                 save_feedback_data(user_id, session_id, feedback)
 
-                # Store only feedback in database (JSON string)
-                analysis.feedback = json.dumps(feedback)  # Serialize feedback
+                # Update analysis status to completed
                 analysis.status = "completed"
                 db.session.commit()
 
                 print(f"Session analysis completed for {session_id}")
             else:
                 analysis.status = "failed"
-                analysis.feedback = "All files failed to process"
                 db.session.commit()
                 print(f"Session analysis failed for {session_id}")
 
@@ -323,16 +319,13 @@ def process_session_files(user_id, session_id, model_name, app):
                         analysis = Analysis(
                             user_id=user_id,
                             session_id=session_id,
-                            feedback="",
                             status="failed",
                         )
                         db.session.add(analysis)
                     else:
                         analysis.status = "failed"
-                        analysis.feedback = f"Processing error: {str(e)}"
                 else:
                     analysis.status = "failed"
-                    analysis.feedback = f"Processing error: {str(e)}"
                 db.session.commit()
             except Exception as db_error:
                 print(f"Error updating analysis record: {str(db_error)}")

@@ -314,7 +314,7 @@ class MediaAnalysisService:
         frame_b64 = base64.b64encode(buffer).decode('utf-8')
         return frame_b64
 
-    def aggregate_frame_scores(self, frame_scores: List[Dict], frame_measurements: List[Dict], raw_scores_percent: List[Dict], frame_keypoints: List, view: str, total_frames: int) -> Dict:
+    def aggregate_frame_scores(self, frame_scores: List[Dict], frame_measurements: List[Dict], raw_scores_percent: List[Dict], view: str, total_frames: int) -> Dict:
         """Aggregate frame scores and measurements into final analysis result"""
         if not frame_scores:
             return {"error": "No frames processed", "view": view}
