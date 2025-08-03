@@ -43,7 +43,11 @@ def get_session_presigned_urls(user_id: str, session_id: str) -> Dict[str, str]:
                 )
                 # Use the full filename as the key
                 filename = obj.object_name.split("/")[-1]
-                presigned_urls[filename] = url
+                # Extract side from filename
+                side = filename.split("_")[-1]
+                # Remove file extension
+                side = side.split(".")[0]
+                presigned_urls[side] = url
             except Exception as e:
                 print(f"Error generating presigned URL for {obj.object_name}: {e}")
                 continue
