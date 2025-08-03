@@ -1,8 +1,13 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
+import os
 
 from flask import Blueprint, jsonify, make_response, request
-from flask_jwt_extended import (create_access_token, get_jwt_identity,
-                                jwt_required, unset_jwt_cookies)
+from flask_jwt_extended import (
+    create_access_token,
+    get_jwt_identity,
+    jwt_required,
+    unset_jwt_cookies,
+)
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -29,13 +34,17 @@ class AuthController:
 
             db.session.add(new_user)
             db.session.commit()
-            
+
             # Create JWT token
             access_token = create_access_token(
                 identity=str(new_user.id), expires_delta=timedelta(hours=3)
             )
 
-            return {"message": "User registered successfully", "user": new_user.to_dict(), "token": access_token}, 201
+            return {
+                "message": "User registered successfully",
+                "user": new_user.to_dict(),
+                "token": access_token,
+            }, 201
 
         except IntegrityError:
             db.session.rollback()
@@ -150,7 +159,15 @@ def validate_session():
     if status == 200:
         return jsonify({"logged_in": True, "user": result["user"]}), 200
     else:
-        return jsonify({"logged_in": False, "error": result.get("error", "access_token_cookie not found")}), status
+        return (
+            jsonify(
+                {
+                    "logged_in": False,
+                    "error": result.get("error", "access_token_cookie not found"),
+                }
+            ),
+            status,
+        )
 
 
 # New endpoint to generate WebSocket token
@@ -159,15 +176,47 @@ def validate_session():
 def generate_ws_token():
     """Generate a short-lived one-time token for WebSocket authentication"""
     user_id = get_jwt_identity()
-    
+
     ws_token = create_access_token(
-        identity=str(user_id), 
+        identity=str(user_id),
         expires_delta=timedelta(minutes=5),
-        additional_claims={"ws_auth": True, "one_time": True}
+        additional_claims={"ws_auth": True, "one_time": True},
     )
-    
-    return jsonify({
-        "ws_token": ws_token,
-        "expires_in": 300,
-        "message": "WebSocket token generated successfully"
-    }), 200
+
+    return (
+        jsonify(
+            {
+                "ws_token": ws_token,
+                "expires_in": 300,
+                "message": "WebSocket token generated successfully",
+            }
+        ),
+        200,
+    )
+
+
+@auth_bp.route("/gen-tele-link", methods=["GET"])
+@jwt_required()
+def generate_telegram_link():
+    user_id = get_jwt_identity()
+    result, status = auth_controller.get_user_profile(user_id)
+
+    if status == 200:
+        telegram_link = f"https://t.me/{os.getenv("TELEGRAM_BOT_USERNAME", "posturexBot")}?start={user_id}"
+        user = User.query.get(user_id)
+
+        # set telegram link expiry
+        user.tele_link_expires_at = datetime.now() + timedelta(seconds=60)
+        db.session.commit()
+
+        return (
+            jsonify(
+                {
+                    "telegram_link": telegram_link,
+                    "expires_at": user.tele_link_expires_at.timestamp(),
+                }
+            ),
+            200,
+        )
+    else:
+        return jsonify({"error": result.get("error", "User not found")}), status
