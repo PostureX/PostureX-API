@@ -415,7 +415,7 @@ def minio_webhook():
                 user_id=user_id, session_id=session_id
             ).first()
             
-            if existing_analysis and existing_analysis.status in ["in_progress", "completed"]:
+            if existing_analysis and existing_analysis.status in ["in_progress"]:
                 print(f"Session {session_id} is already being processed or completed, skipping")
                 continue
 
