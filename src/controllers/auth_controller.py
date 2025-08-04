@@ -202,7 +202,7 @@ def generate_telegram_link():
     result, status = auth_controller.get_user_profile(user_id)
 
     if status == 200:
-        telegram_link = f"https://t.me/{os.getenv("TELEGRAM_BOT_USERNAME", "posturexBot")}?start={user_id}"
+        telegram_link = f"https://t.me/{os.getenv('TELEGRAM_BOT_USERNAME', 'posturexBot')}?start={user_id}"
         user = User.query.get(user_id)
 
         # set telegram link expiry
