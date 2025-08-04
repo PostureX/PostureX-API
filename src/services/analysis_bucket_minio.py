@@ -1,6 +1,3 @@
-"""
-MinIO service for storing detailed analysis data
-"""
 import json
 import os
 import io
@@ -58,33 +55,6 @@ def save_detailed_analysis_data(user_id: str, session_id: str, detected_side: st
     except Exception as e:
         print(f"Error saving detailed analysis data: {str(e)}")
         return False
-
-def get_detailed_analysis_data(user_id: str, session_id: str, detected_side: str) -> Dict[str, Any]:
-    """
-    Retrieve detailed analysis data from MinIO
-    
-    Args:
-        user_id: User identifier
-        session_id: Session identifier
-        detected_side: The detected side (front, left, right, back)
-        
-    Returns:
-        Dict containing the analysis data or empty dict if not found
-    """
-    try:
-        ensure_analysis_bucket()
-        
-        file_path = f"{user_id}/{session_id}/detailed_{detected_side}.json"
-        
-        # Download from MinIO
-        response = minio_client.get_object(ANALYSIS_BUCKET, file_path)
-        json_data = response.read().decode('utf-8')
-        
-        return json.loads(json_data)
-        
-    except Exception as e:
-        print(f"Error retrieving detailed analysis data: {str(e)}")
-        return {}
 
 def list_analysis_files(user_id: str, session_id: str) -> List[str]:
     """

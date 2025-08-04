@@ -1,14 +1,18 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from datetime import datetime, timedelta
+import json
 
 from src.config.database import db
 from src.models.analysis import Analysis
 import threading
 from src.config.websocket_config import MODEL_CONFIGS
 from src.controllers.minio_video_controller import process_session_files
-from src.services.analysis_bucket_minio import get_detailed_analysis_data, list_analysis_files, delete_session_analysis_data, save_feedback_data, get_feedback_file_path
+from src.services.analysis_bucket_minio import list_analysis_files, delete_session_analysis_data, save_feedback_data, get_feedback_file_path
+from src.services.summary_bucket_minio import get_user_weekly_feedback_data, save_posture_insights, get_posture_insights, get_posture_insights_presigned_url
 from src.services.video_upload_analysis_service import delete_session_video_files
 from src.services.minio import get_session_presigned_urls
+from google import genai
 
 from src.services.analysis_bucket_minio import ANALYSIS_BUCKET
 from src.services.minio import client as minio_client
@@ -294,6 +298,140 @@ class AnalysisController:
             db.session.rollback()
             return {"error": str(e)}, 500
 
+    def generate_posture_summary(self, user_id):
+        """Generate weekly posture insights summary using Gemini AI"""
+        try:
+            # Check if posture_insights.json exists and is up to date
+            existing_insights = get_posture_insights(str(user_id))
+            
+            if existing_insights:
+                # Check if the insights are from today
+                date_generated = existing_insights.get('date_generated')
+                if date_generated:
+                    try:
+                        generated_date = datetime.fromisoformat(date_generated.replace('Z', '+00:00')).replace(tzinfo=None)
+                        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                        
+                        # If generated today, return existing insights with presigned URL
+                        if generated_date.date() >= today.date():
+                            presigned_url = get_posture_insights_presigned_url(str(user_id))
+                            return {
+                                "message": "Posture insights already generated today",
+                                "insights_url": presigned_url,
+                                "generated_today": True
+                            }, 200
+                    except (ValueError, AttributeError) as e:
+                        print(f"Error parsing date_generated: {e}")
+                        # Continue to regenerate if date parsing fails
+            
+            # Get current week's feedback data
+            weekly_feedback = get_user_weekly_feedback_data(str(user_id))
+            
+            if not weekly_feedback:
+                return {
+                    "message": "No feedback data found for the current week",
+                    "insights_url": "",
+                    "insights": None
+                }, 404
+            
+            # Generate insights using Gemini
+            insights = self._generate_insights_with_gemini(weekly_feedback)
+            
+            if "error" in insights:
+                return {"error": insights["error"]}, 500
+            
+            # Create posture insights structure
+            posture_insights = {
+                "date_generated": datetime.now().isoformat(),
+                "insights": insights
+            }
+            
+            # Save to MinIO
+            save_success = save_posture_insights(str(user_id), posture_insights)
+            
+            if not save_success:
+                return {"error": "Failed to save posture insights"}, 500
+            
+            # Get presigned URL
+            presigned_url = get_posture_insights_presigned_url(str(user_id))
+            
+            return {
+                "message": "Posture insights generated successfully",
+                "insights_url": presigned_url,
+                "generated_today": True
+            }, 200
+            
+        except Exception as e:
+            return {"error": str(e)}, 500
+
+    def _generate_insights_with_gemini(self, weekly_feedback):
+        """Generate posture insights using Gemini AI"""
+        try:
+            client = genai.Client()
+            
+            prompt = (
+                "You are a firearms posture evaluation expert. You are provided with multiple `feedback.json` files from the same user across the current week. Each file contains detailed analysis of that session from one or more views (front, back, left, right).\n\n"
+                "Each file includes multiple posture metrics (e.g., knee angle, head tilt, arm angle) under each view. For each metric, you are given:\n"
+                "- A **commendation** string (positive observation),\n"
+                "- A **critique** string (weakness),\n"
+                "- A **list of suggestions** (improvement tips).\n\n"
+                "---\n\n"
+                "**Your Goal:**\n"
+                "Identify the most important posture insights from the entire week and return a JSON array summarising them. Each object in the array must have:\n\n"
+                "```json\n"
+                "{\n"
+                '  "type": "critical" | "warning" | "good" | "info",\n'
+                '  "title": "Short title",\n'
+                '  "content": "One or two sentence explanation"\n'
+                "}\n"
+                "```\n\n"
+                f"Weekly feedback data:\n{json.dumps(weekly_feedback, indent=2)}"
+            )
+            
+            response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+            
+            if response and response.text:
+                try:
+                    # Clean up response text and parse JSON
+                    response_text = response.text.strip()
+                    
+                    # Look for JSON array in the response (between ```json and ```)
+                    if '```json' in response_text and '```' in response_text:
+                        # Extract JSON from markdown code block
+                        start_marker = '```json'
+                        end_marker = '```'
+                        start_idx = response_text.find(start_marker) + len(start_marker)
+                        end_idx = response_text.find(end_marker, start_idx)
+                        if end_idx > start_idx:
+                            json_str = response_text[start_idx:end_idx].strip()
+                        else:
+                            json_str = response_text.replace('```json', '').replace('```', '').strip()
+                    else:
+                        # Try to find JSON array directly
+                        json_str = response_text.strip()
+                        # Remove any leading/trailing text that isn't JSON
+                        if json_str.startswith('[') and json_str.endswith(']'):
+                            pass  # Already looks like JSON array
+                        elif '[' in json_str and ']' in json_str:
+                            # Extract JSON array from mixed content
+                            start_idx = json_str.find('[')
+                            end_idx = json_str.rfind(']') + 1
+                            json_str = json_str[start_idx:end_idx]
+                    
+                    insights = json.loads(json_str)
+                    return insights
+                except json.JSONDecodeError as e:
+                    print(f"Error parsing Gemini response as JSON: {e}")
+                    print(f"Response text: {response.text}")
+                    return {"error": "Invalid JSON response from Gemini API"}
+            
+            return {"error": "No response from Gemini API"}
+            
+        except Exception as e:
+            print(f"Error generating insights with Gemini: {str(e)}")
+            return {"error": f"Failed to generate insights: {str(e)}"}
+
+
 
 # Initialize controller
 analysis_controller = AnalysisController()
@@ -356,4 +494,13 @@ def delete_analysis(analysis_id):
     """Delete specific analysis by ID"""
     user_id = int(get_jwt_identity())
     result, status = analysis_controller.delete_analysis(user_id, analysis_id)
+    return jsonify(result), status
+
+
+@analysis_bp.route("/summary", methods=["GET"])
+@jwt_required()
+def get_posture_summary():
+    """Get weekly posture insights summary"""
+    user_id = int(get_jwt_identity())
+    result, status = analysis_controller.generate_posture_summary(user_id)
     return jsonify(result), status
