@@ -1,7 +1,7 @@
 .env
 .migrations/
-__pycache__/
 .venv
 models/
 .vscode/
 migrations/
+**/__pycache__/
