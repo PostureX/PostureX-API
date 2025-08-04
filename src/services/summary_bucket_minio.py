@@ -1,6 +1,3 @@
-"""
-MinIO service for storing posture insights summary data
-"""
 import json
 import io
 from datetime import timedelta, datetime

@@ -1,6 +1,3 @@
-"""
-MinIO service for storing detailed analysis data
-"""
 import json
 import os
 import io
