@@ -364,6 +364,50 @@ class AnalysisController:
         except Exception as e:
             return {"error": str(e)}, 500
 
+    def regenerate_posture_summary(self, user_id):
+        """Regenerate weekly posture insights summary using Gemini AI (ignores existing insights)"""
+        try:
+            # Get current week's feedback data
+            weekly_feedback = get_user_weekly_feedback_data(str(user_id))
+            
+            if not weekly_feedback:
+                return {
+                    "message": "No feedback data found for the current week",
+                    "insights_url": "",
+                    "insights": None
+                }, 404
+            
+            # Generate insights using Gemini (force regeneration)
+            insights = self._generate_insights_with_gemini(weekly_feedback)
+            
+            if "error" in insights:
+                return {"error": insights["error"]}, 500
+            
+            # Create posture insights structure
+            posture_insights = {
+                "date_generated": datetime.now().isoformat(),
+                "insights": insights
+            }
+            
+            # Save to MinIO (this will overwrite existing file)
+            save_success = save_posture_insights(str(user_id), posture_insights)
+            
+            if not save_success:
+                return {"error": "Failed to save posture insights"}, 500
+            
+            # Get presigned URL
+            presigned_url = get_posture_insights_presigned_url(str(user_id))
+            
+            return {
+                "message": "Posture insights regenerated successfully",
+                "insights_url": presigned_url,
+                "generated_today": True,
+                "force_regenerated": True
+            }, 200
+            
+        except Exception as e:
+            return {"error": str(e)}, 500
+
     def _generate_insights_with_gemini(self, weekly_feedback):
         """Generate posture insights using Gemini AI"""
         try:
@@ -503,4 +547,13 @@ def get_posture_summary():
     """Get weekly posture insights summary"""
     user_id = int(get_jwt_identity())
     result, status = analysis_controller.generate_posture_summary(user_id)
+    return jsonify(result), status
+
+
+@analysis_bp.route("/summary/retry", methods=["POST"])
+@jwt_required()
+def retry_posture_summary():
+    """Force regenerate weekly posture insights summary (ignores existing insights)"""
+    user_id = int(get_jwt_identity())
+    result, status = analysis_controller.regenerate_posture_summary(user_id)
     return jsonify(result), status
