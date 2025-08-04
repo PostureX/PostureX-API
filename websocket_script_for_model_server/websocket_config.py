@@ -4,6 +4,11 @@ WEBSOCKET_HOST = '10.3.250.181'
 JWT_SECRET_KEY = "EdibleCookieDough"
 JWT_ALGORITHM = "HS256"
 
+# Pixel to centimeter conversion ratios based on calibration
+# Calibration measurements: 100cm horizontal = 644 pixels, 100cm vertical = 605 pixels
+PIXELS_TO_CM_HORIZONTAL = 100 / 644  # 1 pixel = ~0.1553 cm horizontally
+PIXELS_TO_CM_VERTICAL = 100 / 605    # 1 pixel = ~0.1653 cm vertically
+
 # Model configurations
 MODEL_CONFIGS = {
     'cx': {
