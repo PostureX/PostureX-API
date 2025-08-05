@@ -252,26 +252,31 @@ class AnalysisController:
     #     except Exception as e:
     #         return {"error": str(e)}, 500
 
-    def delete_analysis(self, user_id, analysis_id):
+    def delete_analysis(self, user_id, analysis_id, is_admin=False):
         """Delete analysis by ID and associated analysis files from MinIO"""
         try:
-            analysis = Analysis.query.filter_by(id=analysis_id, user_id=user_id).first()
+            # Use admin privileges if is_admin is True
+            if is_admin:
+                analysis = Analysis.query.filter_by(id=analysis_id).first()
+            else:
+                analysis = Analysis.query.filter_by(id=analysis_id, user_id=user_id).first()
 
             if not analysis:
                 return {"error": "Analysis not found"}, 404
 
-            # Store session_id for MinIO cleanup before deleting the database record
+            # Store session_id and user_id for MinIO cleanup before deleting the database record
             session_id = analysis.session_id
+            actual_user_id = analysis.user_id  # Use the actual user_id from the analysis record
 
             # Delete from database first
             db.session.delete(analysis)
             db.session.commit()
 
             # Delete associated analysis files from MinIO analysis-data bucket
-            analysis_deletion_success = delete_session_analysis_data(str(user_id), session_id)
+            analysis_deletion_success = delete_session_analysis_data(str(actual_user_id), session_id)
             
             # Delete associated video files from MinIO videos bucket
-            video_deletion_success = delete_session_video_files(str(user_id), session_id)
+            video_deletion_success = delete_session_video_files(str(actual_user_id), session_id)
             
             # Determine response based on deletion results
             if analysis_deletion_success and video_deletion_success:
