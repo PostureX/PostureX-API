@@ -6,6 +6,7 @@ import json
 import base64
 import os
 import math
+import uuid
 from typing import Dict, List
 from ..config.websocket_config import WEBSOCKET_HOST
 from flask_jwt_extended import get_jwt_identity, decode_token
@@ -30,17 +31,6 @@ class MediaAnalysisService:
         """Check if file is an image based on extension"""
         image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}
         return os.path.splitext(file_path.lower())[1] in image_extensions
-    
-    async def analyze_media(self, file_path: str, view: str, user_id: str = None, session_id: str = None) -> Dict:
-        """
-        Analyze a video or image file by sending frames to the WebSocket inference service
-        """
-        if self.is_image_file(file_path):
-            return await self.analyze_image(file_path, view, user_id, session_id)
-        elif self.is_video_file(file_path):
-            return await self.analyze_video(file_path, view, user_id, session_id)
-        else:
-            return {"error": f"Unsupported file type: {file_path}", "view": view}
     
     async def analyze_image(self, image_path: str, view: str = None, user_id: str = None, session_id: str = None) -> Dict:
         """
@@ -151,6 +141,9 @@ class MediaAnalysisService:
 
         Returns aggregated results including posture scores, measurements, and keypoints.
         """
+        analysis_id = str(uuid.uuid4())[:8]
+        print(f"[{analysis_id}] Starting video analysis for {video_path}")
+        
         try:
             # Try different OpenCV backends for better compatibility
             cap = None
@@ -160,13 +153,13 @@ class MediaAnalysisService:
                 try:
                     cap = cv2.VideoCapture(video_path, backend)
                     if cap.isOpened():
-                        print(f"Successfully opened video with backend: {backend}")
+                        print(f"[{analysis_id}] Successfully opened video with backend: {backend}")
                         break
                     else:
                         cap.release()
                         cap = None
                 except Exception as e:
-                    print(f"Failed to open video with backend {backend}: {e}")
+                    print(f"[{analysis_id}] Failed to open video with backend {backend}: {e}")
                     if cap:
                         cap.release()
                     cap = None
@@ -181,16 +174,17 @@ class MediaAnalysisService:
                 cap.release()
                 return {"error": f"Invalid video file - no frames detected: {video_path}", "view": view}
             
-            # Process every nth frame to reduce computation
-            frame_skip = max(1, total_frames // 5) if total_frames > 30 else 1
+            # Frame skip interval (process every nth frame)
+            frame_skip = 2  # Process every 5th frame (0, 5, 10, 15, etc.)
             
-            print(f"Video info: {total_frames} frames, {fps} FPS")
-            print(f"Frame skip value: {frame_skip}, will process approximately {total_frames // frame_skip} frames")
+            print(f"[{analysis_id}] Video info: {total_frames} frames, {fps} FPS")
+            print(f"[{analysis_id}] Frame skip interval: {frame_skip}, will process approximately {total_frames // frame_skip} frames")
 
             frame_scores = []
             frame_measurements = []
             raw_scores_percent_list = []
             frame_idx = 0
+            processed_frame_count = 0
             
             # Collect detailed frame data for MinIO storage
             detailed_frames_data = []
@@ -204,7 +198,7 @@ class MediaAnalysisService:
                 ping_timeout=10,
                 close_timeout=10
             ) as websocket:
-                print('Connected to WebSocket for video analysis')
+                print(f'[{analysis_id}] Connected to WebSocket for video analysis')
                 
                 # Wait for authentication response (automatic with query parameter)
                 auth_response = await websocket.recv()
@@ -212,7 +206,7 @@ class MediaAnalysisService:
                 
                 # Handle authentication response
                 if auth_data.get('status') == 'authenticated':
-                    print(f'Authentication successful, user ID: {auth_data.get("user_id")}')
+                    print(f'[{analysis_id}] Authentication successful, user ID: {auth_data.get("user_id")}')
                 else:
                     cap.release()
                     return {"error": f"Authentication failed: {auth_data.get('error', 'Unknown error')}", "view": view}
@@ -222,8 +216,10 @@ class MediaAnalysisService:
                     if not ret:
                         break
                     
+                    # Only process every nth frame based on frame_skip interval
                     if frame_idx % frame_skip == 0:
-                        print(f"Processing frame {frame_idx}/{total_frames}")
+                        processed_frame_count += 1
+                        print(f"[{analysis_id}] Processing frame {frame_idx}/{total_frames} (processed: {processed_frame_count})")
                         try:
                             # Convert frame to base64
                             frame_b64 = self.frame_to_base64(frame)
@@ -259,15 +255,20 @@ class MediaAnalysisService:
                                         "measurements": measurements
                                     }
                                     detailed_frames_data.append(frame_data)
+                            else:
+                                print(f"[{analysis_id}] Invalid result for frame {frame_idx}: {result}")
 
                         except Exception as e:
-                            print(f"Error processing frame {frame_idx}: {e}")
+                            print(f"[{analysis_id}] Error processing frame {frame_idx}: {e}")
                     
                     frame_idx += 1
             
             cap.release()
             
-            print(f"Finished processing video. Total frames: {total_frames}, Processed frames: {len(frame_scores)}")
+            print(f"[{analysis_id}] Finished processing video. Total frames: {total_frames}, Processed frames: {len(frame_scores)}, Expected frames: {processed_frame_count}")
+            
+            if len(frame_scores) == 0:
+                return {"error": "No frames were successfully processed", "view": view}
             
             # Calculate final analysis results
             result = self.aggregate_frame_scores(frame_scores, frame_measurements, raw_scores_percent_list, view, total_frames)
@@ -283,7 +284,7 @@ class MediaAnalysisService:
                     "analysis_timestamp": asyncio.get_event_loop().time(),
                     "total_frames": total_frames,
                     "processed_frames": len(detailed_frames_data),
-                    "frame_skip": frame_skip,
+                    "frame_skip_interval": frame_skip,
                     "frames_data": detailed_frames_data,
                     "aggregate_results": {
                         "score": result.get("score", {}),
@@ -383,18 +384,6 @@ class MediaAnalysisService:
         }
 
         return result
-    
-    def analyze_media_sync(self, file_path: str, view: str, user_id: str = None, session_id: str = None) -> Dict:
-        
-        """Synchronous wrapper for media analysis"""
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            return loop.run_until_complete(self.analyze_media(file_path, view, user_id, session_id))
-        except Exception as e:
-            return {"error": str(e), "file_path": file_path}
-        finally:
-            loop.close()
 
 def delete_session_video_files(user_id: str, session_id: str) -> bool:
     """

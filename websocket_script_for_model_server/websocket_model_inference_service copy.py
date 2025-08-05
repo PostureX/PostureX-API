@@ -385,131 +385,38 @@ def calculate_foot_to_shoulder_offset(keypoints):
 
 def determine_user_side(keypoints, head_tilt_angle=None):
     """
-    Determine the side of the user based on visibility scores of ears and shoulders.
-    Uses a 10% threshold difference in visibility scores to detect left/right orientation.
-    Returns 'left', 'right', or 'front' (front includes both front and back facing).
-    
-    Args:
-        keypoints: Array of keypoints with [x, y, confidence_score] format
-        head_tilt_angle: Unused parameter kept for compatibility
-    
-    Returns:
-        str: 'left', 'right', or 'front'
+    Determine the side of the user based on the nose, eye, and ear positions.
     """
-    # COCO-WholeBody keypoint indices
-    KEYPOINT_INDICES = {
-        'left_ear': 3,
-        'right_ear': 4, 
-        'left_shoulder': 5,
-        'right_shoulder': 6
-    }
-    
-    # Configuration
-    threshold_percent = 10.0  # Minimum difference in visibility scores (%) to determine side
-    min_confidence = 0.3     # Minimum confidence threshold for keypoints to be considered valid
-    
-    def calculate_visibility_difference(left_score, right_score):
-        """
-        Calculate percentage difference between left and right visibility scores
-        
-        Args:
-            left_score: Visibility score for left keypoint
-            right_score: Visibility score for right keypoint
-            
-        Returns:
-            Percentage difference (positive if left > right, negative if right > left)
-        """
-        if left_score == 0 and right_score == 0:
-            return 0.0
-        
-        max_score = max(left_score, right_score)
-        if max_score == 0:
-            return 0.0
-        
-        # Calculate percentage difference relative to the maximum score
-        diff_percent = ((left_score - right_score) / max_score) * 100
-        return diff_percent
-    
-    def get_keypoint_scores(keypoints_array):
-        """
-        Extract visibility scores for ears and shoulders
-        
-        Args:
-            keypoints_array: Keypoints array [x, y, score] of shape (N, 3)
-            
-        Returns:
-            Dictionary with visibility scores for each keypoint
-        """
-        scores = {}
-        
-        for keypoint_name, idx in KEYPOINT_INDICES.items():
-            if idx < len(keypoints_array):
-                x, y, score = keypoints_array[idx]
-                scores[keypoint_name] = score
-            else:
-                scores[keypoint_name] = 0.0
-        
-        return scores
-    
-    # Get visibility scores
-    scores = get_keypoint_scores(keypoints)
-    
-    # Check if keypoints meet minimum confidence threshold
-    valid_keypoints = {k: v for k, v in scores.items() if v >= min_confidence}
-    
-    # Calculate differences
-    ear_diff = 0.0
-    shoulder_diff = 0.0
-    
-    # Ear difference (left_ear - right_ear)
-    if 'left_ear' in valid_keypoints and 'right_ear' in valid_keypoints:
-        ear_diff = calculate_visibility_difference(
-            scores['left_ear'], scores['right_ear']
-        )
-    
-    # Shoulder difference (left_shoulder - right_shoulder)  
-    if 'left_shoulder' in valid_keypoints and 'right_shoulder' in valid_keypoints:
-        shoulder_diff = calculate_visibility_difference(
-            scores['left_shoulder'], scores['right_shoulder']
-        )
-    
-    # Decision logic
-    side = 'front'  # Default to front
-    
-    # Count how many indicators point to each direction
-    left_indicators = 0
-    right_indicators = 0
-    total_indicators = 0
-    
-    # Check ear difference
-    if abs(ear_diff) >= threshold_percent:
-        total_indicators += 1
-        if ear_diff > 0:  # Left ear more visible
-            left_indicators += 1
-        else:  # Right ear more visible
-            right_indicators += 1
-    
-    # Check shoulder difference
-    if abs(shoulder_diff) >= threshold_percent:
-        total_indicators += 1
-        if shoulder_diff > 0:  # Left shoulder more visible
-            left_indicators += 1
-        else:  # Right shoulder more visible
-            right_indicators += 1
-    
-    # Determine side based on indicators
-    if total_indicators > 0:
-        if left_indicators > right_indicators:
-            side = 'left'
-        elif right_indicators > left_indicators:
-            side = 'right'
-        else:
-            side = 'front'  # Equal indicators or conflicting
+    # Nose, Eye, Ear (COCO Wholebody)
+    keypoint_index_both_side = {"left": [0, 1, 3], "right": [0, 2, 4]}
+
+    # If nose<left eye<left ear, user and nose>right eye>right ear, user facing front
+    if (
+        keypoints[keypoint_index_both_side["left"][0]][0]
+        < keypoints[keypoint_index_both_side["left"][1]][0]
+        < keypoints[keypoint_index_both_side["left"][2]][0]
+    ) and (
+        keypoints[keypoint_index_both_side["right"][0]][0]
+        > keypoints[keypoint_index_both_side["right"][1]][0]
+        > keypoints[keypoint_index_both_side["right"][2]][0]
+    ):
+        return "front"
+    # If nose<left eye<left ear, user facing left
+    elif (
+        keypoints[keypoint_index_both_side["left"][0]][0]
+        < keypoints[keypoint_index_both_side["left"][1]][0]
+        < keypoints[keypoint_index_both_side["left"][2]][0]
+    ):
+        return "left"
+    # If nose>right eye>right ear, user facing right
+    elif (
+        keypoints[keypoint_index_both_side["right"][0]][0]
+        > keypoints[keypoint_index_both_side["right"][1]][0]
+        > keypoints[keypoint_index_both_side["right"][2]][0]
+    ):
+        return "right"
     else:
-        # No significant differences found - user facing front/back
-        side = 'front'
-    
-    return side
+        return "front"
 
 
 def posture_score_from_keypoints(keypoints):

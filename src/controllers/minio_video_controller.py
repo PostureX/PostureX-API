@@ -214,11 +214,12 @@ def process_session_files(user_id, session_id, model_name, app):
         try:
             print(f"Processing session: {user_id}/{session_id} with model {model_name}")
 
-            # Find or create analysis record
+            # Find analysis record
             analysis = Analysis.query.filter_by(
                 user_id=user_id, session_id=session_id
             ).first()
             if not analysis:
+                print(f"Warning: Analysis record not found for {user_id}/{session_id}, creating new one")
                 analysis = Analysis(
                     user_id=user_id,
                     session_id=session_id,
@@ -227,9 +228,8 @@ def process_session_files(user_id, session_id, model_name, app):
                 )
                 db.session.add(analysis)
                 db.session.commit()
-            else:
-                analysis.status = "in_progress"
-                db.session.commit()
+            
+            print(f"Processing session {session_id} with status: {analysis.status}")
 
             # List all files in the session folder
             folder_prefix = f"{user_id}/{session_id}/"
@@ -419,6 +419,22 @@ def minio_webhook():
             if existing_analysis and existing_analysis.status in ["in_progress"]:
                 print(f"Session {session_id} is already being processed, skipping")
                 continue
+
+            # Immediately mark as in_progress to prevent duplicate processing
+            if existing_analysis:
+                existing_analysis.status = "in_progress"
+                existing_analysis.model_name = model_name
+            else:
+                existing_analysis = Analysis(
+                    user_id=user_id,
+                    session_id=session_id,
+                    model_name=model_name,
+                    status="in_progress",
+                )
+                db.session.add(existing_analysis)
+            db.session.commit()
+            
+            print(f"Marked session {session_id} as in_progress, scheduling processing")
 
             # Capture the app object before starting the timer
             app = current_app._get_current_object()
