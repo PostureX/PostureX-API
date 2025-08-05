@@ -303,15 +303,6 @@ class AnalysisController:
             db.session.rollback()
             return {"error": str(e)}, 500
 
-    def get_all_users(self):
-        """Get all users"""
-        try:
-            users = User.query.all()
-            user_data = [user.to_dict() for user in users]
-            return {"users": user_data}, 200
-        except Exception as e:
-            return {"error": str(e)}, 500
-
     def generate_posture_summary(self, user_id):
         """Generate weekly posture insights summary using Gemini AI"""
         try:
@@ -579,15 +570,8 @@ def list_user_analyses(user_id):
     """Get all analyses for a specific user"""
     current_user_id = int(get_jwt_identity())
     current_user = User.query.get(current_user_id)
-    if current_user_id != user_id and not getattr(current_user, "is_admin", False):
-        return jsonify({"error": "Unauthorized access"}), 403
+    if not current_user.is_admin:
+        return jsonify({"error": "Admin access required"}), 403
     
     result, status = analysis_controller.get_all_analyses(user_id)
-    return jsonify(result), status
-
-@analysis_bp.route("/users", methods=["GET"])
-@jwt_required()
-def list_all_users():
-    """Get all users"""
-    result, status = analysis_controller.get_all_users()
     return jsonify(result), status
