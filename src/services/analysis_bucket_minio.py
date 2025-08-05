@@ -4,7 +4,7 @@ import os
 import io
 from typing import Dict, Any, List
 from minio.error import S3Error
-from .minio import client as minio_client
+from src.services.minio import client as minio_client
 
 ANALYSIS_BUCKET = "analysis-data"
 
