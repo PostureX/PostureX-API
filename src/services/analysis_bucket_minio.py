@@ -202,3 +202,57 @@ def get_feedback_file_path(user_id: str, session_id: str) -> str:
     except Exception as e:
         print(f"Error checking feedback file: {str(e)}")
         return ""
+
+
+def get_detailed_analysis_data(user_id: str, session_id: str, detected_side: str = None) -> Dict[str, Any]:
+    """
+    Get detailed analysis data from MinIO
+    
+    Args:
+        user_id: User identifier
+        session_id: Session identifier
+        detected_side: Optional specific side to get (front, left, right, back)
+        
+    Returns:
+        Dictionary containing detailed analysis data or empty dict if not found
+    """
+    try:
+        ensure_analysis_bucket()
+        
+        if detected_side:
+            # Get specific side data
+            file_path = f"{user_id}/{session_id}/detailed_{detected_side}.json"
+            try:
+                response = minio_client.get_object(ANALYSIS_BUCKET, file_path)
+                data = response.read().decode('utf-8')
+                response.close()
+                response.release_conn()
+                return json.loads(data)
+            except Exception:
+                return {}
+        else:
+            # Get all detailed analysis files for the session
+            prefix = f"{user_id}/{session_id}/"
+            objects = minio_client.list_objects(ANALYSIS_BUCKET, prefix=prefix, recursive=True)
+            
+            all_data = {}
+            for obj in objects:
+                if obj.object_name.endswith('.json') and 'detailed_' in obj.object_name:
+                    try:
+                        response = minio_client.get_object(ANALYSIS_BUCKET, obj.object_name)
+                        data = response.read().decode('utf-8')
+                        response.close()
+                        response.release_conn()
+                        
+                        # Extract side from filename (e.g., detailed_front.json -> front)
+                        side = obj.object_name.split('detailed_')[1].split('.json')[0]
+                        all_data[side] = json.loads(data)
+                    except Exception as e:
+                        print(f"Error reading {obj.object_name}: {e}")
+                        continue
+            
+            return all_data
+        
+    except Exception as e:
+        print(f"Error getting detailed analysis data: {str(e)}")
+        return {}

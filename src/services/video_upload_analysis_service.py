@@ -7,12 +7,17 @@ import base64
 import os
 import math
 import uuid
+from datetime import datetime
+import pytz
 from typing import Dict, List
 from ..config.websocket_config import WEBSOCKET_HOST
 from flask_jwt_extended import get_jwt_identity, decode_token
 from flask import request
 from .analysis_bucket_minio import save_detailed_analysis_data
 from .minio import client as minio_client
+
+# Singapore timezone
+SGT = pytz.timezone('Asia/Singapore')
 
 class MediaAnalysisService:
     """Service for analyzing videos and images using the WebSocket inference service"""
@@ -86,16 +91,24 @@ class MediaAnalysisService:
                     detected_view = posture_score.pop("side")
                     print(f"Detected view: {detected_view}, result: {result}")
                     
+                    # Handle front/back disambiguation for image analysis too
+                    if view == 'back' and detected_view == 'front':
+                        detected_view = 'back'
+                        print(f"Image: User specified 'back' view, treating detected 'front' as 'back'")
+                    elif view == 'front' and detected_view == 'front':
+                        detected_view = 'front'
+                        print(f"Image: User specified 'front' view, confirmed by model detection")
+                    
                     # Save detailed analysis data to MinIO if user_id and session_id are provided
                     if user_id and session_id:
                         detailed_data = {
                             "file_type": "image",
                             "view": view,
                             "detected_view": detected_view,
-                            "analysis_timestamp": asyncio.get_event_loop().time(),
+                            "analysis_timestamp": datetime.now(SGT).isoformat(),
                             "image_data": {
                                 "keypoints": keypoints,
-                                "score": posture_score,
+                                "score": posture_score,  # This already has 'side' popped out
                                 "raw_scores_percent": raw_scores_percent,
                                 "measurements": measurements
                             }
@@ -115,7 +128,7 @@ class MediaAnalysisService:
                         "measurements": measurements,
                         "frame_count": 1,
                         "total_frames": 1,
-                        "analysis_timestamp": asyncio.get_event_loop().time(),
+                        "analysis_timestamp": datetime.now(SGT).isoformat(),
                         "file_type": "image",
                     }
                 
@@ -276,20 +289,27 @@ class MediaAnalysisService:
             
             # Save detailed frame data to MinIO if user_id and session_id are provided
             if user_id and session_id and detailed_frames_data:
-                detected_view = result.get("view", view)
+                detected_view = result.get("detected_view", view)  # Use the most common detected side
+                
+                # Create aggregate results without 'side' field in score
+                aggregate_score = result.get("score", {}).copy()
+                if 'side' in aggregate_score:
+                    del aggregate_score['side']
+                
                 detailed_data = {
                     "file_type": "video",
                     "view": view,
                     "detected_view": detected_view,
-                    "analysis_timestamp": asyncio.get_event_loop().time(),
+                    "analysis_timestamp": datetime.now(SGT).isoformat(),
                     "total_frames": total_frames,
                     "processed_frames": len(detailed_frames_data),
                     "frame_skip_interval": frame_skip,
                     "frames_data": detailed_frames_data,
                     "aggregate_results": {
-                        "score": result.get("score", {}),
+                        "score": aggregate_score,  # Score without 'side' field
                         "raw_score_percent": result.get("raw_scores_percent", {}),
-                        "measurements": result.get("measurements", {})
+                        "measurements": result.get("measurements", {}),
+                        "side_detection_summary": result.get("side_detection_summary", {})
                     }
                 }
                 save_detailed_analysis_data(user_id, session_id, detected_view, detailed_data)
@@ -320,12 +340,59 @@ class MediaAnalysisService:
         if not frame_scores:
             return {"error": "No frames processed", "view": view}
         
-        # Use the provided view since users must specify the actual view
-        detected_side = view  # Use the view provided by the user
+        # Group frames by detected side and count occurrences
+        side_counts = {}
+        frames_by_side = {}
+        measurements_by_side = {}
+        raw_scores_by_side = {}
+        
+        for i, score in enumerate(frame_scores):
+            if isinstance(score, dict) and 'side' in score:
+                detected_side = score['side']
+                
+                # Count occurrences of each side
+                if detected_side not in side_counts:
+                    side_counts[detected_side] = 0
+                    frames_by_side[detected_side] = []
+                    measurements_by_side[detected_side] = []
+                    raw_scores_by_side[detected_side] = []
+                
+                side_counts[detected_side] += 1
+                frames_by_side[detected_side].append(score)
+                
+                # Add corresponding measurements and raw scores if available
+                if i < len(frame_measurements):
+                    measurements_by_side[detected_side].append(frame_measurements[i])
+                if i < len(raw_scores_percent):
+                    raw_scores_by_side[detected_side].append(raw_scores_percent[i])
+        
+        # Find the most common detected side
+        if not side_counts:
+            return {"error": "No valid side detection found in frames", "view": view}
+        
+        most_common_side = max(side_counts, key=side_counts.get)
+        print(f"Side detection counts: {side_counts}")
+        print(f"Most common detected side: {most_common_side} ({side_counts[most_common_side]} frames)")
+        
+        # Handle front/back disambiguation using user-provided view
+        # The model can only detect left/right/front, but cannot distinguish front from back
+        # So if user specified 'back' and model detected 'front', trust the user
+        final_detected_view = most_common_side
+        if view == 'back' and most_common_side == 'front':
+            final_detected_view = 'back'
+            print(f"User specified 'back' view, treating detected 'front' as 'back'")
+        elif view == 'front' and most_common_side == 'front':
+            final_detected_view = 'front'
+            print(f"User specified 'front' view, confirmed by model detection")
+        
+        # Use only frames from the most common detected side for aggregation
+        selected_frame_scores = frames_by_side[most_common_side]
+        selected_measurements = measurements_by_side[most_common_side]
+        selected_raw_scores = raw_scores_by_side[most_common_side]
         
         # Calculate average posture scores (excluding 'side' field)
         avg_scores = {}
-        for score in frame_scores:
+        for score in selected_frame_scores:
             if isinstance(score, dict):
                 for metric, value in score.items():
                     if metric == 'side':  # Skip the 'side' field during averaging
@@ -334,20 +401,22 @@ class MediaAnalysisService:
                         avg_scores[metric] = []
                     if isinstance(value, (int, float)):
                         avg_scores[metric].append(value)
+        
         final_scores = {}
         for metric, values in avg_scores.items():
             if values:
                 final_scores[metric] = np.mean(values)
 
-        #Calculate averege raw scores percent
+        # Calculate average raw scores percent
         avg_raw_scores = {}
-        for raw_score in raw_scores_percent:
+        for raw_score in selected_raw_scores:
             if isinstance(raw_score, dict):
                 for metric, value in raw_score.items():
                     if metric not in avg_raw_scores:
                         avg_raw_scores[metric] = []
                     if isinstance(value, (int, float)):
                         avg_raw_scores[metric].append(value)
+        
         final_raw_scores_percent = {}
         for metric, values in avg_raw_scores.items():
             if values:
@@ -355,7 +424,7 @@ class MediaAnalysisService:
         
         # Calculate average measurements
         avg_measurements = {}
-        for measurements in frame_measurements:
+        for measurements in selected_measurements:
             if isinstance(measurements, dict):
                 for metric, value in measurements.items():
                     if metric not in avg_measurements:
@@ -369,17 +438,30 @@ class MediaAnalysisService:
             if values:
                 final_measurements[metric] = np.mean(values)
 
-        # Calculate overall score
-        overall_score = np.mean(list(final_scores.values())) if final_scores else 0
+        # Calculate overall score from numeric values only (exclude 'side' field)
+        numeric_scores = {k: v for k, v in final_scores.items() if k != "side" and isinstance(v, (int, float))}
+        overall_score = np.mean(list(numeric_scores.values())) if numeric_scores else 0
+        
+        # Create a copy of final_scores for the main result (includes 'side')
+        final_scores_with_side = final_scores.copy()
+        final_scores_with_side['side'] = final_detected_view
         
         result = {
             "overall_posture_score": overall_score,
-            "score": final_scores,
-            "raw_scores_percent": final_raw_scores_percent,  # Changed from "final_raw_scores_percent"
+            "score": final_scores_with_side,  # This includes 'side' for main API response
+            "raw_scores_percent": final_raw_scores_percent,
             "measurements": final_measurements,
-            "detected_view": detected_side,
-            "frame_count": len(frame_scores),
+            "detected_view": final_detected_view,  # Use the final determined view (handles front/back)
+            "view": view,  # Keep original view for reference
+            "frame_count": len(selected_frame_scores),  # Count of frames used for aggregation
             "total_frames": total_frames,
+            "side_detection_summary": {
+                "side_counts": side_counts,
+                "most_common_side": most_common_side,
+                "final_detected_view": final_detected_view,
+                "user_specified_view": view,
+                "frames_used_for_aggregation": len(selected_frame_scores)
+            },
             "analysis_timestamp": asyncio.get_event_loop().time()
         }
 

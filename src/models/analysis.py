@@ -1,5 +1,13 @@
 from datetime import datetime
+import pytz
 from src.config.database import db, db_config
+
+# Singapore timezone
+SGT = pytz.timezone('Asia/Singapore')
+
+def get_sgt_now():
+    """Get current time in Singapore timezone"""
+    return datetime.now(SGT)
 
 class Analysis(db.Model):
     """Analysis model for storing analysis results"""
@@ -11,7 +19,7 @@ class Analysis(db.Model):
     session_id = db.Column(db.Text, nullable=False)
     model_name = db.Column(db.String(100), nullable=False)
     status = db.Column(db.String(50), default='in_progress')  # e.g., 'in_progress', 'completed', 'failed'
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_sgt_now)
     
     def __repr__(self):
         return f'<Analysis {self.id}>'
