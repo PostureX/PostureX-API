@@ -3,8 +3,9 @@ import io
 from datetime import timedelta, datetime
 from typing import Dict, Any, List
 from minio.error import S3Error
-from .minio import client as minio_client
-from .analysis_bucket_minio import ensure_analysis_bucket, ANALYSIS_BUCKET
+from src.services.minio import client as minio_client
+from src.services.analysis_bucket_minio import ensure_analysis_bucket, ANALYSIS_BUCKET
+from src.utils.cache import get_cached_presigned_url, cache_presigned_url
 
 SUMMARY_BUCKET = "summary"
 
@@ -87,7 +88,7 @@ def get_posture_insights(user_id: str) -> Dict[str, Any]:
 
 def get_posture_insights_presigned_url(user_id: str) -> str:
     """
-    Get presigned URL for posture insights file
+    Get presigned URL for posture insights file with caching
 
     Args:
         user_id: User identifier
@@ -100,15 +101,30 @@ def get_posture_insights_presigned_url(user_id: str) -> str:
 
         file_path = f"{user_id}/posture_insights.json"
 
-        # Check if file exists
+        # Check if file exists first
         try:
             minio_client.stat_object(SUMMARY_BUCKET, file_path)
-            # Generate presigned URL (valid for 1 hour)
-            url = minio_client.presigned_get_object(
-                SUMMARY_BUCKET, file_path, expires=timedelta(hours=1)
-            )
-            return url
         except:
+            return ""
+
+        # Check cache first
+        cached_url = get_cached_presigned_url(SUMMARY_BUCKET, file_path)
+        if cached_url:
+            return cached_url
+
+        # Generate new presigned URL if not cached
+        try:
+            expires_delta = timedelta(hours=1)
+            url = minio_client.presigned_get_object(
+                SUMMARY_BUCKET, file_path, expires=expires_delta
+            )
+            
+            # Cache the URL
+            cache_presigned_url(SUMMARY_BUCKET, file_path, url, expires_delta)
+            return url
+            
+        except Exception as e:
+            print(f"Error generating presigned URL for {file_path}: {e}")
             return ""
 
     except Exception as e:

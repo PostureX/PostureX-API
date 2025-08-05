@@ -1,6 +1,7 @@
 import json
 import threading
 from datetime import datetime, timedelta
+import time
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
@@ -30,6 +31,11 @@ from src.services.summary_bucket_minio import (
 )
 from src.services.video_upload_analysis_service import delete_session_video_files
 from src.services.pdf_report_generator import generate_pdf_report
+from src.utils.cache import (
+    get_cached_presigned_url,
+    cache_presigned_url,
+    cleanup_expired_cache
+)
 
 analysis_bp = Blueprint("analysis", __name__)
 
@@ -138,8 +144,11 @@ class AnalysisController:
             return {"error": str(e)}, 500
 
     def _get_session_analysis_json_urls(self, user_id: str, session_id: str) -> dict:
-        """Helper method to get presigned URLs for analysis JSON files"""
+        """Helper method to get presigned URLs for analysis JSON files with caching"""
         try:
+            # Clean up expired cache entries periodically
+            cleanup_expired_cache()
+            
             # Get list of available analysis files
             files = list_analysis_files(user_id, session_id)
             json_urls = {}
@@ -150,12 +159,23 @@ class AnalysisController:
                     filename = file_path.split("/")[-1]
                     side = filename.replace("detailed_", "").replace(".json", "")
 
-                    # Generate presigned URL for this JSON file
+                    # Check cache first
+                    cached_url = get_cached_presigned_url(ANALYSIS_BUCKET, file_path)
+                    if cached_url:
+                        json_urls[side] = cached_url
+                        continue
+
+                    # Generate new presigned URL if not cached
                     try:
+                        expires_delta = timedelta(hours=1)
                         url = minio_client.presigned_get_object(
-                            ANALYSIS_BUCKET, file_path, expires=timedelta(hours=1)
+                            ANALYSIS_BUCKET, file_path, expires=expires_delta
                         )
+                        
+                        # Cache the URL
+                        cache_presigned_url(ANALYSIS_BUCKET, file_path, url, expires_delta)
                         json_urls[side] = url
+                        
                     except Exception as e:
                         print(f"Error generating presigned URL for {file_path}: {e}")
                         continue
@@ -167,7 +187,7 @@ class AnalysisController:
             return {}
 
     def _get_session_feedback_json_url(self, user_id: str, session_id: str) -> str:
-        """Helper method to get presigned URL for the feedback JSON file"""
+        """Helper method to get presigned URL for the feedback JSON file with caching"""
         try:
             # Check if feedback file exists
             file_path = get_feedback_file_path(user_id, session_id)
@@ -175,12 +195,22 @@ class AnalysisController:
             if not file_path:
                 return ""
 
-            # Generate presigned URL for the feedback JSON file
+            # Check cache first
+            cached_url = get_cached_presigned_url(ANALYSIS_BUCKET, file_path)
+            if cached_url:
+                return cached_url
+
+            # Generate new presigned URL if not cached
             try:
+                expires_delta = timedelta(hours=1)
                 url = minio_client.presigned_get_object(
-                    ANALYSIS_BUCKET, file_path, expires=timedelta(hours=1)
+                    ANALYSIS_BUCKET, file_path, expires=expires_delta
                 )
+                
+                # Cache the URL
+                cache_presigned_url(ANALYSIS_BUCKET, file_path, url, expires_delta)
                 return url
+                
             except Exception as e:
                 print(f"Error generating presigned URL for {file_path}: {e}")
                 return ""
@@ -661,12 +691,36 @@ def get_posture_summary():
     result, status = analysis_controller.generate_posture_summary(user_id)
     return jsonify(result), status
 
+@analysis_bp.route("/summary/<int:user_id>", methods=["GET"])
+@jwt_required()
+def get_user_posture_summary(user_id):
+    """Get weekly posture insights summary for a specific user"""
+    current_user_id = int(get_jwt_identity())
+    current_user = User.query.get(current_user_id)
+    if not current_user.is_admin:
+        return jsonify({"error": "Admin access required"}), 403
+
+    result, status = analysis_controller.generate_posture_summary(user_id)
+    return jsonify(result), status
+
 
 @analysis_bp.route("/summary/retry", methods=["POST"])
 @jwt_required()
 def retry_posture_summary():
     """Force regenerate weekly posture insights summary (ignores existing insights)"""
     user_id = int(get_jwt_identity())
+    result, status = analysis_controller.regenerate_posture_summary(user_id)
+    return jsonify(result), status
+
+@analysis_bp.route("/summary/retry/<int:user_id>", methods=["POST"])
+@jwt_required()
+def retry_user_posture_summary(user_id):
+    """Force regenerate weekly posture insights summary for a specific user (admin only)"""
+    current_user_id = int(get_jwt_identity())
+    current_user = User.query.get(current_user_id)
+    if not current_user.is_admin:
+        return jsonify({"error": "Admin access required"}), 403
+
     result, status = analysis_controller.regenerate_posture_summary(user_id)
     return jsonify(result), status
 

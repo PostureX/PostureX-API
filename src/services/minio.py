@@ -4,6 +4,9 @@ from minio import Minio
 from minio.error import S3Error
 from typing import List, Dict
 
+# Import caching functions
+from src.utils.cache import get_cached_presigned_url, cache_presigned_url
+
 client = Minio(
     os.getenv("MINIO_ENDPOINT"),
     access_key=os.getenv("MINIO_ACCESS_KEY"),
@@ -13,7 +16,7 @@ client = Minio(
 
 def get_session_presigned_urls(user_id: str, session_id: str) -> Dict[str, str]:
     """
-    Get presigned URLs for all media files in a session
+    Get presigned URLs for all media files in a session with caching
     
     Args:
         user_id: User identifier
@@ -35,19 +38,34 @@ def get_session_presigned_urls(user_id: str, session_id: str) -> Dict[str, str]:
         presigned_urls = {}
         for obj in objects:
             try:
-                # Generate presigned URL (valid for 1 hour)
-                url = client.presigned_get_object(
-                    videos_bucket, 
-                    obj.object_name, 
-                    expires=timedelta(hours=1)
-                )
-                # Use the full filename as the key
-                filename = obj.object_name.split("/")[-1]
-                # Extract side from filename
-                side = filename.split("_")[-1]
-                # Remove file extension
-                side = side.split(".")[0]
-                presigned_urls[side] = url
+                # Check cache first
+                cached_url = get_cached_presigned_url(videos_bucket, obj.object_name)
+                
+                if cached_url:
+                    # Use cached URL
+                    filename = obj.object_name.split("/")[-1]
+                    side = filename.split("_")[-1].split(".")[0]
+                    presigned_urls[side] = cached_url
+                else:
+                    # Generate new presigned URL (valid for 1 hour)
+                    expires_delta = timedelta(hours=1)
+                    url = client.presigned_get_object(
+                        videos_bucket, 
+                        obj.object_name, 
+                        expires=expires_delta
+                    )
+                    
+                    # Cache the URL
+                    cache_presigned_url(videos_bucket, obj.object_name, url, expires_delta)
+                    
+                    # Use the full filename as the key
+                    filename = obj.object_name.split("/")[-1]
+                    # Extract side from filename
+                    side = filename.split("_")[-1]
+                    # Remove file extension
+                    side = side.split(".")[0]
+                    presigned_urls[side] = url
+                    
             except Exception as e:
                 print(f"Error generating presigned URL for {obj.object_name}: {e}")
                 continue
