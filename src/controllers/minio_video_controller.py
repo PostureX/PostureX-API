@@ -1,27 +1,23 @@
-from flask import Blueprint, request, jsonify
-from src.config.database import db
-from src.models.analysis import Analysis
-from src.services.minio import client as minio_client
-from src.services.video_upload_analysis_service import MediaAnalysisService
-from src.services.analysis_bucket_minio import save_feedback_data
-from src.config.websocket_config import WEBSOCKET_HOST
-from flask_jwt_extended import (
-    decode_token,
-    get_jwt_identity,
-    jwt_required,
-    create_access_token,
-)
-from urllib.parse import unquote
-from datetime import timedelta
-from google import genai
-import os
+import asyncio
 import json
+import os
 import tempfile
 import threading
-import time
 import traceback
-import asyncio
-from flask import current_app
+from datetime import timedelta
+from urllib.parse import unquote
+
+from flask import Blueprint, current_app, jsonify, request
+from flask_jwt_extended import create_access_token
+from google import genai
+
+from src.config.database import db
+from src.config.websocket_config import WEBSOCKET_HOST
+from src.models.analysis import Analysis
+from src.services.analysis_bucket_minio import save_feedback_data, save_pdf_report
+from src.services.minio import client as minio_client
+from src.services.video_upload_analysis_service import MediaAnalysisService
+from src.services.pdf_report_generator import generate_pdf_report
 
 minio_hook_bp = Blueprint("minio_hook", __name__)
 
@@ -219,7 +215,9 @@ def process_session_files(user_id, session_id, model_name, app):
                 user_id=user_id, session_id=session_id
             ).first()
             if not analysis:
-                print(f"Warning: Analysis record not found for {user_id}/{session_id}, creating new one")
+                print(
+                    f"Warning: Analysis record not found for {user_id}/{session_id}, creating new one"
+                )
                 analysis = Analysis(
                     user_id=user_id,
                     session_id=session_id,
@@ -228,7 +226,7 @@ def process_session_files(user_id, session_id, model_name, app):
                 )
                 db.session.add(analysis)
                 db.session.commit()
-            
+
             print(f"Processing session {session_id} with status: {analysis.status}")
 
             # List all files in the session folder
@@ -276,7 +274,9 @@ def process_session_files(user_id, session_id, model_name, app):
                     minio_client.fget_object("videos", decoded_key, tmp_path)
 
                     # Run inference with user_id and session_id for detailed data storage
-                    result = run_inference_on_media(tmp_path, view, model_name, user_id, session_id)
+                    result = run_inference_on_media(
+                        tmp_path, view, model_name, user_id, session_id
+                    )
 
                     if "error" not in result:
                         session_results[view] = result
@@ -296,6 +296,10 @@ def process_session_files(user_id, session_id, model_name, app):
 
                 # Save feedback to MinIO as JSON file
                 save_feedback_data(user_id, session_id, feedback)
+
+                # Generate PDF report
+                pdf_bytes = generate_pdf_report(analysis, feedback)
+                save_pdf_report(user_id, session_id, pdf_bytes)
 
                 # Update analysis status to completed
                 analysis.status = "completed"
@@ -415,7 +419,7 @@ def minio_webhook():
             existing_analysis = Analysis.query.filter_by(
                 user_id=user_id, session_id=session_id
             ).first()
-            
+
             if existing_analysis and existing_analysis.status in ["in_progress"]:
                 print(f"Session {session_id} is already being processed, skipping")
                 continue
@@ -433,7 +437,7 @@ def minio_webhook():
                 )
                 db.session.add(existing_analysis)
             db.session.commit()
-            
+
             print(f"Marked session {session_id} as in_progress, scheduling processing")
 
             # Capture the app object before starting the timer

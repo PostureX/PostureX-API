@@ -1,0 +1,98 @@
+{
+  "back": {
+    "knee_angle": {
+      "critique": "Your knee angle of 139.38\u00b0 deviates from the ideal range of 145-160\u00b0. Your knees are bent too much.",
+      "suggestions": [
+        "Reduce your knee flexion by straightening your legs slightly. Aim for a consistent slight bend that allows for mobility without excessive fatigue."
+      ]
+    },
+    "head_tilt": {
+      "critique": "Your head is tilted excessively (-16.80\u00b0), potentially straining your neck or compromising your sight picture. Your head is tilted too far forward or downward.",
+      "suggestions": [
+        "Raise your chin slightly and ensure your head is aligned straight with your spine. Avoid looking down with your neck bent.",
+        "Maintain a neutral head position, looking straight forward. Relax your neck."
+      ]
+    },
+    "arm_angle": {
+      "critique": "Your arm angle of 166.05\u00b0 is not optimal for a stable firing platform. Your arms may be too extended or angled improperly, reducing stability and control.",
+      "suggestions": [
+        "Slightly retract your arms, or adjust their vertical angle, to find the sweet spot for recoil absorption and follow-through. Ensure elbows are not locked out."
+      ]
+    },
+    "arm_bent_angle": {
+      "commendation": "Your arm bend (14.86\u00b0 of bend) is ideal, allowing for effective recoil absorption without locking your elbows."
+    },
+    "leg_spread": {
+      "critique": "Your leg spread of 64.68 units deviates from the optimal range of 60-80 units. Your feet are too close together, compromising stability.",
+      "suggestions": [
+        "Widen your stance slightly to about shoulder-width or slightly wider, ensuring a stable base for your fighting stance."
+      ]
+    },
+    "back_angle": {
+      "commendation": "Your back angle of -3.59\u00b0 indicates an optimal slight forward lean, which is crucial for recoil management and an aggressive stance."
+    },
+    "foot_to_shoulder_offset": {
+      "critique": "Your foot placement deviates significantly from the ideal fighting stance. This can severely compromise stability, mobility, and effective recoil management.",
+      "suggestions": [
+        "Review your foot placement for both lateral width and front-to-back stagger.",
+        "Current offsets (L/R): 37.56, 20.37. Ensure your feet are roughly shoulder-width apart and laterally balanced. Avoid feet being too close or too far outside your shoulders.",
+        "Aim for a dynamic and athletic base that allows for quick changes in direction and absorption of recoil.",
+        "Practice footwork drills to ingrain proper foot placement for a stable and mobile shooting platform."
+      ]
+    }
+  },
+  "front": {
+    "foot_to_shoulder_offset": {
+      "critique": "Your foot placement deviates significantly from the ideal fighting stance. This can severely compromise stability, mobility, and effective recoil management.",
+      "suggestions": [
+        "Review your foot placement for both lateral width and front-to-back stagger.",
+        "Current offsets (L/R): -55.48, -43.68. Ensure your feet are roughly shoulder-width apart and laterally balanced. Avoid feet being too close or too far outside your shoulders.",
+        "Aim for a dynamic and athletic base that allows for quick changes in direction and absorption of recoil.",
+        "Practice footwork drills to ingrain proper foot placement for a stable and mobile shooting platform."
+      ]
+    }
+  },
+  "left": {
+    "foot_to_shoulder_offset": {
+      "critique": "Your foot placement deviates significantly from the ideal fighting stance. This can severely compromise stability, mobility, and effective recoil management.",
+      "suggestions": [
+        "Review your foot placement for both lateral width and front-to-back stagger.",
+        "Current offsets (L/R): 134.67, 33.58. Adopt a staggered stance with one foot slightly forward, ensuring a stable front-to-back base. The exact values depend on your dominant side and preferred stance.",
+        "Aim for a dynamic and athletic base that allows for quick changes in direction and absorption of recoil.",
+        "Practice footwork drills to ingrain proper foot placement for a stable and mobile shooting platform."
+      ]
+    }
+  },
+  "right": {
+    "foot_to_shoulder_offset": {
+      "critique": "Your foot placement deviates significantly from the ideal fighting stance. This can severely compromise stability, mobility, and effective recoil management.",
+      "suggestions": [
+        "Review your foot placement for both lateral width and front-to-back stagger.",
+        "Current offsets (L/R): -47.80, 53.75. Adopt a staggered stance with one foot slightly forward, ensuring a stable front-to-back base. The exact values depend on your dominant side and preferred stance.",
+        "Aim for a dynamic and athletic base that allows for quick changes in direction and absorption of recoil.",
+        "Practice footwork drills to ingrain proper foot placement for a stable and mobile shooting platform."
+      ]
+    },
+    "knee_angle": {
+      "commendation": "Your knee angle of 154.99\u00b0 is optimal, providing excellent shock absorption and readiness for dynamic movement."
+    },
+    "head_tilt": {
+      "commendation": "Your head position is neutral (-0.60\u00b0), promoting clear vision and proper alignment with your sights."
+    },
+    "arm_angle": {
+      "commendation": "Your arm angle of 103.59\u00b0 is effective, balancing extension for stability with control for recoil management."
+    },
+    "arm_bent_angle": {
+      "commendation": "Your arm bend (18.44\u00b0 of bend) is ideal, allowing for effective recoil absorption without locking your elbows."
+    },
+    "leg_spread": {
+      "critique": "Your leg spread of 240.82 units deviates from the optimal range of 60-80 units. Your feet are too wide apart, which can limit mobility and increase fatigue.",
+      "suggestions": [
+        "Narrow your stance slightly; excessive width can hinder mobility and make rapid transitions more difficult."
+      ]
+    },
+    "back_angle": {
+      "commendation": "Your back angle of 7.84\u00b0 indicates an optimal slight forward lean, which is crucial for recoil management and an aggressive stance."
+    }
+  }
+}
