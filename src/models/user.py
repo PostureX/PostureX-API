@@ -1,5 +1,13 @@
 from datetime import datetime
+import pytz
 from src.config.database import db, db_config
+
+# Singapore timezone
+SGT = pytz.timezone('Asia/Singapore')
+
+def get_sgt_now():
+    """Get current time in Singapore timezone"""
+    return datetime.now(SGT)
 
 
 class User(db.Model):
@@ -15,7 +23,7 @@ class User(db.Model):
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
     telegram_id = db.Column(db.Integer, unique=True, nullable=True)
     tele_link_expires_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_sgt_now)
 
     # Relationship to analyses
     analyses = db.relationship(

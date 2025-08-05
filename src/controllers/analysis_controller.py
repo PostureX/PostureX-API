@@ -163,10 +163,13 @@ class AnalysisController:
             print(f"Error getting session feedback JSON URL: {str(e)}")
             return ""
 
-    def reattempt_analysis(self, user_id, analysis_id, model_name=None):
+    def reattempt_analysis(self, user_id, analysis_id, model_name=None, is_admin=False):
         """Re-attempt analysis by re-processing the session files with specified model"""
         try:
-            analysis = Analysis.query.filter_by(id=analysis_id, user_id=user_id).first()
+            if is_admin:
+                analysis = Analysis.query.filter_by(id=analysis_id).first()
+            else:
+                analysis = Analysis.query.filter_by(id=analysis_id, user_id=user_id).first()
 
             if not analysis:
                 return {"error": "Analysis not found"}, 404
@@ -517,6 +520,7 @@ def list_analyses():
 def reattempt_analysis(analysis_id):
     """Re-attempt analysis by re-processing session files with optional model selection"""
     user_id = int(get_jwt_identity())
+    current_user = User.query.get(user_id)
     
     # Get model from request body (optional)
     data = request.get_json() or {}
@@ -524,7 +528,7 @@ def reattempt_analysis(analysis_id):
     if model_name and not isinstance(model_name, str):
         return jsonify({"error": "Model name either missing or isn't a string"}), 400
     
-    result, status = analysis_controller.reattempt_analysis(user_id, analysis_id, model_name)
+    result, status = analysis_controller.reattempt_analysis(user_id, analysis_id, model_name, current_user.is_admin)
     return jsonify(result), status
 
 
@@ -544,7 +548,9 @@ def get_analysis(analysis_id):
 def delete_analysis(analysis_id):
     """Delete specific analysis by ID"""
     user_id = int(get_jwt_identity())
-    result, status = analysis_controller.delete_analysis(user_id, analysis_id)
+    current_user = User.query.get(user_id)
+
+    result, status = analysis_controller.delete_analysis(user_id, analysis_id, current_user.is_admin)
     return jsonify(result), status
 
 @analysis_bp.route("/summary", methods=["GET"])

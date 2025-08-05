@@ -383,7 +383,7 @@ def calculate_foot_to_shoulder_offset(keypoints):
     return left_offset_cm, right_offset_cm
 
 
-def determine_user_side(keypoints, head_tilt_angle=None):
+def determine_user_side(keypoints):
     """
     Determine the side of the user based on visibility scores of ears and shoulders.
     Uses a 10% threshold difference in visibility scores to detect left/right orientation.
@@ -704,13 +704,30 @@ async def handle_inference(websocket, model_name: str):
                 await websocket.send(json.dumps({"error": "No person detected"}))
                 continue
 
-            keypoints = preds[0][0]["keypoints"]
+            # Extract keypoints and scores separately, then combine them
+            prediction = preds[0][0]
+            keypoints_xy = prediction.get("keypoints", None)
+            keypoint_scores = prediction.get("keypoint_scores", None)
+            
+            if keypoints_xy is None or keypoint_scores is None:
+                await websocket.send(json.dumps({"error": "Invalid keypoint data"}))
+                continue
+                
+            # Convert to numpy arrays and combine [x, y, score] format
+            keypoints_xy = np.array(keypoints_xy)
+            keypoint_scores = np.array(keypoint_scores)
+            
+            if keypoints_xy.shape[0] != keypoint_scores.shape[0]:
+                await websocket.send(json.dumps({"error": "Keypoint data mismatch"}))
+                continue
+                
+            keypoints = np.column_stack([keypoints_xy, keypoint_scores])
             posture_score, measurement, raw_scores_percent = posture_score_from_keypoints(keypoints)
 
             await websocket.send(
                 json.dumps(
                     {
-                        "keypoints": keypoints,
+                        "keypoints": keypoints.tolist(),  # Convert numpy array to list for JSON serialization
                         "posture_score": posture_score,
                         "raw_scores_percent": raw_scores_percent,
                         "measurements": measurement,
