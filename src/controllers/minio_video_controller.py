@@ -226,6 +226,11 @@ def process_session_files(user_id, session_id, model_name, app):
                 )
                 db.session.add(analysis)
                 db.session.commit()
+            else:
+                # Update status to in_progress if not already
+                if analysis.status != "in_progress":
+                    analysis.status = "in_progress"
+                    db.session.commit()
 
             print(f"Processing session {session_id} with status: {analysis.status}")
 
@@ -420,15 +425,19 @@ def minio_webhook():
                 user_id=user_id, session_id=session_id
             ).first()
 
-            if existing_analysis and existing_analysis.status in ["in_progress"]:
-                print(f"Session {session_id} is already being processed, skipping")
+            if existing_analysis and existing_analysis.status in ["in_progress", "completed"]:
+                print(f"Session {session_id} is already being processed or completed, skipping")
                 continue
 
-            # Immediately mark as in_progress to prevent duplicate processing
+            # Update status to in_progress to prevent duplicate processing
             if existing_analysis:
                 existing_analysis.status = "in_progress"
                 existing_analysis.model_name = model_name
+                db.session.commit()
+                print(f"Updated existing analysis {existing_analysis.id} status to in_progress")
             else:
+                # This should rarely happen now since upload creates the record
+                print(f"Creating new analysis record for {session_id} (upload didn't create one)")
                 existing_analysis = Analysis(
                     user_id=user_id,
                     session_id=session_id,
@@ -436,7 +445,7 @@ def minio_webhook():
                     status="in_progress",
                 )
                 db.session.add(existing_analysis)
-            db.session.commit()
+                db.session.commit()
 
             print(f"Marked session {session_id} as in_progress, scheduling processing")
 

@@ -2,6 +2,8 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 from src.services.minio import client as minio_client
+from src.config.database import db
+from src.models.analysis import Analysis
 import os
 
 video_bp = Blueprint("video", __name__)
@@ -151,6 +153,26 @@ def upload_media():
             400,
         )
 
+    # Create analysis record in database after successful upload
+    try:
+        new_analysis = Analysis(
+            user_id=int(user_id),  # Convert to int since Analysis model expects int
+            session_id=session_id,
+            model_name=model_id,
+            status="pending",  # Initial status before processing starts
+        )
+        db.session.add(new_analysis)
+        db.session.commit()
+        
+        analysis_id = new_analysis.id
+        print(f"Created analysis record with ID: {analysis_id}")
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error creating analysis record: {str(e)}")
+        # Even if DB creation fails, we still have the files uploaded
+        analysis_id = None
+
     # Return results
     if errors:
         return (
@@ -161,6 +183,7 @@ def upload_media():
                     "errors": errors,
                     "session_id": session_id,
                     "model": model_id,
+                    "analysis_id": analysis_id,
                     "views_uploaded": list(uploaded_files.keys()),
                 }
             ),
@@ -174,6 +197,7 @@ def upload_media():
                     "uploaded_files": uploaded_files,
                     "session_id": session_id,
                     "model": model_id,
+                    "analysis_id": analysis_id,
                     "views_uploaded": list(uploaded_files.keys()),
                 }
             ),
