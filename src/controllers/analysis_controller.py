@@ -17,6 +17,7 @@ from google import genai
 from src.services.analysis_bucket_minio import ANALYSIS_BUCKET
 from src.services.minio import client as minio_client
 from datetime import timedelta
+from src.models.user import User
 
 analysis_bp = Blueprint("analysis", __name__)
 
@@ -78,10 +79,14 @@ class AnalysisController:
         except Exception as e:
             return {"error": str(e)}, 500
 
-    def get_analysis_by_id(self, user_id, analysis_id):
+    def get_analysis_by_id(self, user_id, analysis_id, is_admin):
         """Get detailed analysis by ID with presigned URLs for media files and analysis JSON files"""
         try:
-            analysis = Analysis.query.filter_by(id=analysis_id, user_id=user_id).first()
+            analysis = None
+            if is_admin:
+                analysis = Analysis.query.filter_by(id=analysis_id).first()
+            else:
+                analysis = Analysis.query.filter_by(id=analysis_id, user_id=user_id).first()
 
             if not analysis:
                 return {"error": "Analysis not found"}, 404
@@ -296,6 +301,15 @@ class AnalysisController:
 
         except Exception as e:
             db.session.rollback()
+            return {"error": str(e)}, 500
+
+    def get_all_users(self):
+        """Get all users"""
+        try:
+            users = User.query.all()
+            user_data = [user.to_dict() for user in users]
+            return {"users": user_data}, 200
+        except Exception as e:
             return {"error": str(e)}, 500
 
     def generate_posture_summary(self, user_id):
@@ -528,7 +542,9 @@ def reattempt_analysis(analysis_id):
 def get_analysis(analysis_id):
     """Get specific analysis by ID with full detailed data, presigned URLs, and frame-by-frame results"""
     user_id = int(get_jwt_identity())
-    result, status = analysis_controller.get_analysis_by_id(user_id, analysis_id)
+    current_user = User.query.get(user_id)
+
+    result, status = analysis_controller.get_analysis_by_id(user_id, analysis_id, current_user.is_admin)
     return jsonify(result), status
 
 
@@ -539,7 +555,6 @@ def delete_analysis(analysis_id):
     user_id = int(get_jwt_identity())
     result, status = analysis_controller.delete_analysis(user_id, analysis_id)
     return jsonify(result), status
-
 
 @analysis_bp.route("/summary", methods=["GET"])
 @jwt_required()
@@ -556,4 +571,23 @@ def retry_posture_summary():
     """Force regenerate weekly posture insights summary (ignores existing insights)"""
     user_id = int(get_jwt_identity())
     result, status = analysis_controller.regenerate_posture_summary(user_id)
+    return jsonify(result), status
+
+@analysis_bp.route("/list/<int:user_id>", methods=["GET"])
+@jwt_required()
+def list_user_analyses(user_id):
+    """Get all analyses for a specific user"""
+    current_user_id = int(get_jwt_identity())
+    current_user = User.query.get(current_user_id)
+    if current_user_id != user_id and not getattr(current_user, "is_admin", False):
+        return jsonify({"error": "Unauthorized access"}), 403
+    
+    result, status = analysis_controller.get_all_analyses(user_id)
+    return jsonify(result), status
+
+@analysis_bp.route("/users", methods=["GET"])
+@jwt_required()
+def list_all_users():
+    """Get all users"""
+    result, status = analysis_controller.get_all_users()
     return jsonify(result), status

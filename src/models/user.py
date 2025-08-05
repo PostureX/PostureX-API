@@ -12,6 +12,7 @@ class User(db.Model):
     email = db.Column(db.String(255), unique=True, nullable=False)
     name = db.Column(db.String(255), nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
     telegram_id = db.Column(db.Integer, unique=True, nullable=True)
     tele_link_expires_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -30,6 +31,7 @@ class User(db.Model):
             "id": self.id,
             "email": self.email,
             "name": self.name,
+            "is_admin": self.is_admin,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -40,6 +42,7 @@ class User(db.Model):
         user.email = data.get("email", "")
         user.name = data.get("name", "")
         user.password_hash = data.get("password_hash", "")
+        user.is_admin = data.get("is_admin", False)
         if data.get("created_at"):
             user.created_at = data.get("created_at")
         return user
