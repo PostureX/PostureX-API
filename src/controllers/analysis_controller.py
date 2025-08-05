@@ -266,17 +266,17 @@ class AnalysisController:
 
             # Store session_id and user_id for MinIO cleanup before deleting the database record
             session_id = analysis.session_id
-            actual_user_id = analysis.user_id  # Use the actual user_id from the analysis record
+            selected_analysis_user_id = analysis.user_id  # Use the actual user_id from the analysis record
 
             # Delete from database first
             db.session.delete(analysis)
             db.session.commit()
 
             # Delete associated analysis files from MinIO analysis-data bucket
-            analysis_deletion_success = delete_session_analysis_data(str(actual_user_id), session_id)
+            analysis_deletion_success = delete_session_analysis_data(str(selected_analysis_user_id), session_id)
             
             # Delete associated video files from MinIO videos bucket
-            video_deletion_success = delete_session_video_files(str(actual_user_id), session_id)
+            video_deletion_success = delete_session_video_files(str(selected_analysis_user_id), session_id)
             
             # Determine response based on deletion results
             if analysis_deletion_success and video_deletion_success:
