@@ -334,8 +334,15 @@ def get_pdf_report_url(user_id: str, session_id: str) -> str:
             obj = minio_client.stat_object(ANALYSIS_BUCKET, file_path)
 
             if obj:
-                url = minio_client.presigned_get_object(
-                    ANALYSIS_BUCKET, file_path, expires=timedelta(hours=1)
+                url = minio_client.get_presigned_url(
+                    "GET",
+                    ANALYSIS_BUCKET,
+                    file_path,
+                    expires=timedelta(hours=1),
+                    response_headers={
+                        "response-content-type": "application/pdf",
+                        "response-content-disposition": f"attachment; filename={session_id}_report.pdf",
+                    },
                 )
                 return url
 
