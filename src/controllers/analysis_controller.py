@@ -549,11 +549,11 @@ class AnalysisController:
 
             if pdf_url:
                 return {"url": pdf_url}, 200
-            
+
             else:
                 raise FileNotFoundError("PDF report not found")
 
-        except Exception as e:
+        except (FileNotFoundError, KeyError) as e:
             print(f"Error getting PDF report: {str(e)}, trying to regenerate")
 
             try:
@@ -570,9 +570,11 @@ class AnalysisController:
 
                 return {"url": pdf_url}, 200
 
-            except Exception as e:
-                print(f"Error regenerating PDF report: {str(e)}")
-                return {"error": f"Failed to regenerate PDF report: {str(e)}"}, 500
+            except (FileNotFoundError, json.JSONDecodeError, KeyError) as inner_exc:
+                print(f"Error regenerating PDF report: {str(inner_exc)}")
+                return {
+                    "error": f"Failed to regenerate PDF report: {str(inner_exc)}"
+                }, 500
 
 
 # Initialize controller

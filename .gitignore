@@ -1,7 +1,7 @@
 .env
 .migrations/
 .venv
-models/
+posture-x-models/
 .vscode/
 migrations/
 **/__pycache__/

@@ -13,11 +13,12 @@ from google import genai
 
 from src.config.database import db
 from src.config.websocket_config import WEBSOCKET_HOST
-from src.models.analysis import Analysis
+from src.models import Analysis, User
 from src.services.analysis_bucket_minio import save_feedback_data, save_pdf_report
 from src.services.minio import client as minio_client
 from src.services.video_upload_analysis_service import MediaAnalysisService
 from src.services.pdf_report_generator import generate_pdf_report
+from src.services.telegram_bot import send_alert_sync
 
 minio_hook_bp = Blueprint("minio_hook", __name__)
 
@@ -310,10 +311,14 @@ def process_session_files(user_id, session_id, model_name, app):
                 analysis.status = "completed"
                 db.session.commit()
 
+                send_alert_sync(user_id, analysis)
+
                 print(f"Session analysis completed for {session_id}")
             else:
                 analysis.status = "failed"
                 db.session.commit()
+
+                send_alert_sync(user_id, analysis)
                 print(f"Session analysis failed for {session_id}")
 
         except Exception as e:
@@ -337,8 +342,12 @@ def process_session_files(user_id, session_id, model_name, app):
                 else:
                     analysis.status = "failed"
                 db.session.commit()
+
+                send_alert_sync(user_id, analysis)
+                
             except Exception as db_error:
                 print(f"Error updating analysis record: {str(db_error)}")
+                send_alert_sync(user_id, analysis)
 
 
 def generate_session_feedback(session_results):

@@ -351,3 +351,35 @@ def get_pdf_report_url(user_id: str, session_id: str) -> str:
 
     except Exception as e:
         print(f"Error getting PDF report URL: {str(e)}")
+
+def get_pdf_report_as_bytes(user_id: str, session_id: str) -> bytes:
+    """
+    Get the PDF report as bytes
+
+    Args:
+        user_id: User identifier
+        session_id: Session identifier
+
+    Returns:
+        Bytes containing the PDF report or empty bytes if not found
+    """
+    try:
+        ensure_analysis_bucket()
+
+        file_path = f"{user_id}/{session_id}/{session_id}_report.pdf"
+
+        # Get the PDF report as bytes
+        try:
+            response = minio_client.get_object(ANALYSIS_BUCKET, file_path)
+            data = response.read()
+            response.close()
+            response.release_conn()
+            return data
+
+        except Exception as e:
+            print(f"Error getting PDF report as bytes for {file_path}: {e}")
+
+    except Exception as e:
+        print(f"Error getting PDF report as bytes: {str(e)}")
+
+    return b""
