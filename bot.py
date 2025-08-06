@@ -1,3 +1,8 @@
+import logging
+logging.getLogger("telegram").setLevel(logging.CRITICAL)
+logging.getLogger("telegram.ext").setLevel(logging.CRITICAL)
+logging.getLogger().setLevel(logging.CRITICAL)
+
 import datetime
 import os
 
