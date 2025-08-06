@@ -1,5 +1,7 @@
+import os
+
 # WebSocket configuration for live inferencing
-WEBSOCKET_HOST = '10.3.250.181'
+WEBSOCKET_HOST = os.getenv("WEBSOCKET_HOST", "10.3.250.181")
 
 JWT_SECRET_KEY = "EdibleCookieDough"
 JWT_ALGORITHM = "HS256"
