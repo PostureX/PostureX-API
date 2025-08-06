@@ -12,7 +12,10 @@ def get_sgt_now():
 class Analysis(db.Model):
     """Analysis model for storing analysis results"""
     __tablename__ = 'analysis'
-    __table_args__ = {'schema': db_config.schema_name}
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'session_id', name='unique_user_session'),
+        {'schema': db_config.schema_name}
+    )
     
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey(f'{db_config.schema_name}.users.id'), nullable=False)
