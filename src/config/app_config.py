@@ -14,13 +14,19 @@ class AppConfig:
         self.cors_origins = [
             "http://localhost:5173",
             "http://127.0.0.1:5173",
-            os.getenv("API_BASE_URL"),
+            os.getenv("FRONTEND_BASE_URL"),
         ]
         self.dev_config = DevConfig()
         self.prod_config = ProductionConfig()
         self.telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
         self.telegram_bot_username = os.getenv("TELEGRAM_BOT_USERNAME", "posturexBot")
         self.frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+        # MinIO config
+        self.minio_endpoint = os.getenv("MINIO_ENDPOINT")
+        self.minio_access_key = os.getenv("MINIO_ACCESS_KEY")
+        self.minio_secret_key = os.getenv("MINIO_SECRET_KEY")
+        self.minio_secure = os.getenv("MINIO_SECURE", "false").lower() == "true"
 
     def get_flask_config(self):
         """Get Flask configuration dictionary"""
