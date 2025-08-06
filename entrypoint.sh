@@ -3,10 +3,8 @@ set -e
 
 cd /app
 
-if [ ! -d ".venv" ]; then
-    # Initialize the venv if it doesn't exist
-    uv venv --python 3.12
-fi
+# Initialize the venv if it doesn't exist
+uv venv --python 3.12
 
 # Set path
 PATH="/app/.venv/bin:$PATH"
