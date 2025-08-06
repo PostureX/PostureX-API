@@ -1,36 +1,62 @@
-version: "3.8"
+version: '3.8'
+
 services:
+  postgres:
+    image: postgres
+    container_name: postgres
+    environment:
+      POSTGRES_HOST: ${DB_HOST}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - posturex_pgdata:/var/lib/postgresql/data
+    restart: always
+    env_file:
+      - .env
+
   minio:
     image: minio/minio
-    command: server --console-address ":9001" /data
     container_name: minio
-    ports:
-      - "9000:9000"  # MinIO API
-      - "9001:9001"  # MinIO Console
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
     environment:
-      - MINIO_ROOT_USER=ROOTUSER
-      - MINIO_ROOT_PASSWORD=POSTUREX
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    ports:
+      - "${MINIO_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
     volumes:
-      - minio-data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - minio_data:/data
+      - ./minio-setup.sh:/usr/bin/minio-setup.sh
+    entrypoint: >
+      sh -c "
+        /usr/bin/minio server /data --console-address ':${MINIO_CONSOLE_PORT}' &
+        sleep 10 &&
+        chmod +x /usr/bin/minio-setup.sh &&
+        /usr/bin/minio-setup.sh &&
+        fg
+      "
+    restart: always
+    env_file:
+      - .env
 
   flask-app:
     build:
       context: .
-    container_name: flask-app
+    container_name: backend
+    depends_on:
+      - postgres
+      - minio
     ports:
-      - "5000:5000"
+      - "${FLASK_PORT}:5000"
+    volumes:
+      - .:/app
+    restart: always
     env_file:
       - .env
-    environment:
-      - MINIO_ENDPOINT=minio:9000  # Override for Docker networking
-    depends_on:
-      minio:
-        condition: service_healthy
 
 volumes:
-  minio-data:
+  posturex_pgdata:
+  minio_data:

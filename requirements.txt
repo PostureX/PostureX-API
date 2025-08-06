@@ -10,6 +10,7 @@ python-dotenv
 google-genai
 psycopg2
 minio
-opencv-python
+opencv-python-headless
 python-telegram-bot
 telegramify-markdown
+cryptography
