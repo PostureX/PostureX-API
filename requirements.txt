@@ -2,3 +2,14 @@ websockets
 flask
 flask-jwt-extended
 flask-sqlalchemy
+flask-cors
+flask-migrate
+weasyprint
+pytz
+python-dotenv
+google-genai
+psycopg2
+minio
+opencv-python
+python-telegram-bot
+telegramify-markdown
