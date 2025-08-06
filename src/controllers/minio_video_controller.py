@@ -213,14 +213,25 @@ def process_session_files(user_id, session_id, model_name, app):
 
             # Find analysis record
             analysis = Analysis.query.filter_by(
-                user_id=user_id, session_id=session_id
+                user_id=int(user_id), session_id=session_id
             ).first()
+            
+            # Check for duplicate analysis records (should not happen with unique constraint)
+            all_matching_analyses = Analysis.query.filter_by(
+                user_id=int(user_id), session_id=session_id
+            ).all()
+            
+            if len(all_matching_analyses) > 1:
+                print(f"WARNING: Found {len(all_matching_analyses)} analysis records for {user_id}/{session_id}")
+                for idx, record in enumerate(all_matching_analyses):
+                    print(f"  Analysis {idx+1}: ID={record.id}, Status={record.status}, Created={record.created_at}")
+            
             if not analysis:
                 print(
                     f"Warning: Analysis record not found for {user_id}/{session_id}, creating new one"
                 )
                 analysis = Analysis(
-                    user_id=user_id,
+                    user_id=int(user_id),
                     session_id=session_id,
                     model_name=model_name,
                     status="in_progress",
@@ -237,6 +248,7 @@ def process_session_files(user_id, session_id, model_name, app):
 
             # List all files in the session folder
             folder_prefix = f"{user_id}/{session_id}/"
+            print(f"Searching for files with prefix: {folder_prefix}")
             objects = list(
                 minio_client.list_objects(
                     "videos", prefix=folder_prefix, recursive=True
@@ -246,9 +258,12 @@ def process_session_files(user_id, session_id, model_name, app):
             if not objects:
                 analysis.status = "failed"
                 db.session.commit()
+                print(f"No files found for session {session_id}")
                 return
 
-            print(f"Found {len(objects)} files in session")
+            print(f"Found {len(objects)} files in session:")
+            for obj in objects:
+                print(f"  - {obj.object_name}")
 
             # Process each file
             session_results = {}
@@ -258,28 +273,48 @@ def process_session_files(user_id, session_id, model_name, app):
                 filename = os.path.basename(file_key)
                 base_name = os.path.splitext(filename)[0]
 
+                print(f"Processing object: {file_key}")
+                
+                # Validate that this file actually belongs to our session
+                if not file_key.startswith(f"{user_id}/{session_id}/"):
+                    print(f"WARNING: File {file_key} does not belong to session {user_id}/{session_id}, skipping")
+                    continue
+
                 # Extract view from filename (format: model_view)
                 if "_" in base_name:
-                    _, view = base_name.split("_", 1)
+                    file_model, view = base_name.split("_", 1)
+                    # Additional validation: ensure the model matches
+                    if file_model != model_name:
+                        print(f"WARNING: File model {file_model} does not match expected model {model_name}, skipping")
+                        continue
                 else:
                     # Skip files that don't follow the expected format
                     print(f"Skipping file with invalid format: {filename}")
                     continue
 
-                print(f"Processing file {filename} for view {view}")
+                print(f"Processing file {filename} for view {view} with model {file_model}")
 
-                # Download and process file
+                # Download and process file with unique temporary file name
                 file_extension = os.path.splitext(file_key)[1]
+                # Create unique temp file name using session and view to avoid conflicts
+                unique_prefix = f"{user_id}_{session_id}_{view}_{model_name}_"
                 with tempfile.NamedTemporaryFile(
-                    suffix=file_extension, delete=False
+                    suffix=file_extension, prefix=unique_prefix, delete=False
                 ) as tmp_file:
                     tmp_path = tmp_file.name
 
+                print(f"Downloading {file_key} to temporary file: {tmp_path}")
                 try:
                     decoded_key = unquote(file_key)
                     minio_client.fget_object("videos", decoded_key, tmp_path)
+                    
+                    # Verify file was downloaded correctly
+                    if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) == 0:
+                        print(f"ERROR: Failed to download file {file_key} to {tmp_path}")
+                        continue
 
                     # Run inference with user_id and session_id for detailed data storage
+                    print(f"Running inference on {tmp_path} for session {user_id}/{session_id}")
                     result = run_inference_on_media(
                         tmp_path, view, model_name, user_id, session_id
                     )
@@ -328,11 +363,11 @@ def process_session_files(user_id, session_id, model_name, app):
             try:
                 if "analysis" not in locals() or analysis is None:
                     analysis = Analysis.query.filter_by(
-                        user_id=user_id, session_id=session_id
+                        user_id=int(user_id), session_id=session_id
                     ).first()
                     if not analysis:
                         analysis = Analysis(
-                            user_id=user_id,
+                            user_id=int(user_id),
                             session_id=session_id,
                             status="failed",
                         )
@@ -433,6 +468,11 @@ def minio_webhook():
             existing_analysis = Analysis.query.filter_by(
                 user_id=user_id, session_id=session_id
             ).first()
+            
+            if existing_analysis:
+                print(f"Found existing analysis: id={existing_analysis.id}, status={existing_analysis.status}")
+            else:
+                print(f"No existing analysis found for user_id={int(user_id)}, session_id={session_id}")
 
             if existing_analysis and existing_analysis.status in ["in_progress", "completed"]:
                 print(f"Session {session_id} is already being processed or completed, skipping")
@@ -445,16 +485,11 @@ def minio_webhook():
                 db.session.commit()
                 print(f"Updated existing analysis {existing_analysis.id} status to in_progress")
             else:
-                # This should rarely happen now since upload creates the record
-                print(f"Creating new analysis record for {session_id} (upload didn't create one)")
-                existing_analysis = Analysis(
-                    user_id=user_id,
-                    session_id=session_id,
-                    model_name=model_name,
-                    status="in_progress",
-                )
-                db.session.add(existing_analysis)
-                db.session.commit()
+                return jsonify(
+                    {
+                        "error": f"No existing analysis found for {user_id}/{session_id}, cannot start processing"
+                    }
+                ), 400
 
             print(f"Marked session {session_id} as in_progress, scheduling processing")
 
