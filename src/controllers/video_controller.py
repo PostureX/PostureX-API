@@ -95,7 +95,7 @@ def upload_media():
     # Create analysis record in database BEFORE uploading files to prevent race condition
     try:
         new_analysis = Analysis(
-            user_id=user_id,
+            user_id=int(user_id),  # Convert to int since Analysis model expects integer
             session_id=session_id,
             model_name=model_id,
             status="pending",  # Initial status before processing starts
