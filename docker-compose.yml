@@ -30,31 +30,37 @@ services:
           memory: 1gb
     image: minio/minio
     container_name: minio
-    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
-      MINIO_NOTIFY_WEBHOOK_ENABLE_PRIMARY: "on"
-      MINIO_NOTIFY_WEBHOOK_ENDPOINT_PRIMARY: "http://flask-app:5000/api/minio/webhook"
     ports:
       - "${MINIO_PORT}:9000"
       - "${MINIO_CONSOLE_PORT}:9001"
     volumes:
       - minio_data:/data
-      - ./minio-setup.sh:/usr/bin/minio-setup.sh
-    entrypoint: >
-      sh -c "
-        /usr/bin/minio server /data --console-address ':${MINIO_CONSOLE_PORT}' &
-        sleep 10 &&
-        chmod +x /usr/bin/minio-setup.sh &&
-        /usr/bin/minio-setup.sh &&
-        fg
-      "
-    restart: always
-    depends_on:
-      - flask-app
+    command: server /data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${MINIO_PORT}/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: no
+
+  mc:
+    container_name: mc
+    image: minio/mc
     env_file:
       - .env
+    restart: on-failure
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://${MINIO_HOST}:${MINIO_PORT} ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
+      mc mb local/videos --ignore-existing;
+      mc admin config set local notify_webhook:1 endpoint="http://flask-app:${FLASK_PORT}/api/minio/webhook";
+      mc event add local/videos arn:minio:sqs::1:webhook --event put --ignore-existing;"
+    depends_on:
+      - minio
+      - flask-app
 
   flask-app:
     deploy:
@@ -67,6 +73,7 @@ services:
     container_name: backend
     depends_on:
       - postgres
+      - minio
     ports:
       - "${FLASK_PORT}:5000"
     volumes:
