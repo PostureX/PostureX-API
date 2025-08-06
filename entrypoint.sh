@@ -3,8 +3,10 @@ set -e
 
 cd /app
 
-# Initialize the venv
-uv venv --python 3.12
+if [ ! -d ".venv" ]; then
+    # Initialize the venv if it doesn't exist
+    uv venv --python 3.12
+fi
 
 # Set path
 PATH="/app/.venv/bin:$PATH"
@@ -15,14 +17,13 @@ PATH="/app/.venv/bin:$PATH"
 # Install Python dependencies using uv (fast pip alternative)
 uv pip install -r requirements.txt --no-cache-dir
 
-# Remove previous migrations
-rm -rf migrations
-
-# Initialize the database
-flask db init
-flask create-schema
-flask db migrate -m "init table"
-flask db upgrade
+# Initialize the database only if migrations directory does not exist
+if [ ! -d "migrations" ]; then
+    flask db init
+    flask create-schema
+    flask db migrate -m "init table"
+    flask db upgrade
+fi
 
 # Start app and bot
 python app.py & python bot.py
