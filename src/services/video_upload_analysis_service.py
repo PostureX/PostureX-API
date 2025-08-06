@@ -312,7 +312,7 @@ class MediaAnalysisService:
                         "side_detection_summary": result.get("side_detection_summary", {})
                     }
                 }
-                save_detailed_analysis_data(user_id, session_id, detected_view, detailed_data)
+                save_detailed_analysis_data(user_id, session_id, view, detailed_data)
             
             return result
             

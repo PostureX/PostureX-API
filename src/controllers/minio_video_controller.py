@@ -433,6 +433,11 @@ def minio_webhook():
             existing_analysis = Analysis.query.filter_by(
                 user_id=user_id, session_id=session_id
             ).first()
+            
+            if existing_analysis:
+                print(f"Found existing analysis: id={existing_analysis.id}, status={existing_analysis.status}")
+            else:
+                print(f"No existing analysis found for user_id={int(user_id)}, session_id={session_id}")
 
             if existing_analysis and existing_analysis.status in ["in_progress", "completed"]:
                 print(f"Session {session_id} is already being processed or completed, skipping")
@@ -445,16 +450,11 @@ def minio_webhook():
                 db.session.commit()
                 print(f"Updated existing analysis {existing_analysis.id} status to in_progress")
             else:
-                # This should rarely happen now since upload creates the record
-                print(f"Creating new analysis record for {session_id} (upload didn't create one)")
-                existing_analysis = Analysis(
-                    user_id=user_id,
-                    session_id=session_id,
-                    model_name=model_name,
-                    status="in_progress",
-                )
-                db.session.add(existing_analysis)
-                db.session.commit()
+                return jsonify(
+                    {
+                        "error": f"No existing analysis found for {user_id}/{session_id}, cannot start processing"
+                    }
+                ), 400
 
             print(f"Marked session {session_id} as in_progress, scheduling processing")
 

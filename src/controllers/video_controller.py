@@ -92,6 +92,25 @@ def upload_media():
     if not request.files:
         return jsonify({"error": "No files provided"}), 400
 
+    # Create analysis record in database BEFORE uploading files to prevent race condition
+    try:
+        new_analysis = Analysis(
+            user_id=user_id,
+            session_id=session_id,
+            model_name=model_id,
+            status="pending",  # Initial status before processing starts
+        )
+        db.session.add(new_analysis)
+        db.session.commit()
+        
+        analysis_id = new_analysis.id
+        print(f"Created analysis record with ID: {analysis_id}")
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error creating analysis record: {str(e)}")
+        return jsonify({"error": f"Failed to create analysis record: {str(e)}"}), 500
+
     # Process each file in the request
     for field_name, file in request.files.items():
         if file.filename == "":
@@ -146,32 +165,19 @@ def upload_media():
 
     # Validate that at least one file was uploaded successfully
     if not uploaded_files:
+        # If no files were uploaded successfully, delete the analysis record
+        try:
+            db.session.delete(new_analysis)
+            db.session.commit()
+        except Exception as cleanup_error:
+            print(f"Error cleaning up analysis record: {str(cleanup_error)}")
+        
         return (
             jsonify(
                 {"error": "No files were uploaded successfully", "details": errors}
             ),
             400,
         )
-
-    # Create analysis record in database after successful upload
-    try:
-        new_analysis = Analysis(
-            user_id=int(user_id),  # Convert to int since Analysis model expects int
-            session_id=session_id,
-            model_name=model_id,
-            status="pending",  # Initial status before processing starts
-        )
-        db.session.add(new_analysis)
-        db.session.commit()
-        
-        analysis_id = new_analysis.id
-        print(f"Created analysis record with ID: {analysis_id}")
-        
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error creating analysis record: {str(e)}")
-        # Even if DB creation fails, we still have the files uploaded
-        analysis_id = None
 
     # Return results
     if errors:
