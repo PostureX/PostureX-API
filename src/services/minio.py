@@ -3,7 +3,6 @@ from datetime import timedelta
 from minio import Minio
 from minio.error import S3Error
 from typing import List, Dict
-from urllib.parse import urlparse, urlunparse
 
 # Import caching functions
 from src.utils.cache import get_cached_presigned_url, cache_presigned_url
@@ -17,40 +16,6 @@ client = Minio(
     secret_key=CONFIG.minio_secret_key,
     secure=CONFIG.minio_secure,
 )
-
-
-def get_external_presigned_url(bucket_name: str, object_name: str, expires: timedelta) -> str:
-    """
-    Generate a presigned URL with external endpoint for access outside Docker
-    
-    Args:
-        bucket_name: Name of the bucket
-        object_name: Name of the object
-        expires: Expiration time for the URL
-        
-    Returns:
-        Presigned URL with external endpoint
-    """
-    # Generate the presigned URL using internal endpoint
-    internal_url = client.presigned_get_object(bucket_name, object_name, expires=expires)
-    
-    # Replace internal endpoint with external endpoint
-    if CONFIG.minio_external_endpoint != CONFIG.minio_endpoint:
-        parsed_url = urlparse(internal_url)
-        external_netloc = CONFIG.minio_external_endpoint
-        
-        # Reconstruct URL with external endpoint
-        external_url = urlunparse((
-            parsed_url.scheme,
-            external_netloc,
-            parsed_url.path,
-            parsed_url.params,
-            parsed_url.query,
-            parsed_url.fragment
-        ))
-        return external_url
-    
-    return internal_url
 
 
 def get_session_presigned_urls(user_id: str, session_id: str) -> Dict[str, str]:
@@ -86,10 +51,10 @@ def get_session_presigned_urls(user_id: str, session_id: str) -> Dict[str, str]:
                     side = filename.split("_")[-1].split(".")[0]
                     presigned_urls[side] = cached_url
                 else:
-                    # Generate new presigned URL (valid for 1 hour) with external endpoint
+                    # Generate new presigned URL (valid for 1 hour)
                     expires_delta = timedelta(hours=1)
-                    url = get_external_presigned_url(
-                        videos_bucket, obj.object_name, expires_delta
+                    url = client.presigned_get_object(
+                        videos_bucket, obj.object_name, expires=expires_delta
                     )
 
                     # Cache the URL
