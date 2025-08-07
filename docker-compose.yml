@@ -52,11 +52,14 @@ services:
     env_file:
       - .env
     restart: on-failure
+    tty: true
     entrypoint: >
       /bin/sh -c "
       mc alias set local http://${MINIO_HOST}:${MINIO_PORT} ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
       mc mb local/videos --ignore-existing;
       mc admin config set local notify_webhook:1 endpoint="http://flask-app:${FLASK_PORT}/api/minio/webhook";
+      mc admin service restart local;
+      sleep 5;
       mc event add local/videos arn:minio:sqs::1:webhook --event put --ignore-existing;"
     depends_on:
       - minio
