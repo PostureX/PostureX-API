@@ -5,20 +5,20 @@ A comprehensive Flask-based REST API for posture analysis with real-time inferen
 ---
 
 ## 🏗️ Table of Contents
-- [Project Architecture](#project-architecture)
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [API Documentation](#api-documentation)
-  - [Authentication](#authentication)
-  - [File Upload & Analysis](#file-upload--analysis)
-  - [Analysis Management](#analysis-management)
-- [Model Selection](#model-selection)
-- [WebSocket Services](#websocket-services)
-- [MinIO Integration](#minio-integration)
-- [Database Schema](#database-schema)
-- [Configuration](#configuration)
-- [Deployment](#deployment)
-- [Troubleshooting](#troubleshooting)
+- [Project Architecture](#-project-architecture)
+- [Features](#-features)
+- [Quick Start](#-quick-start)
+- [API Documentation](/API_ROUTES.md)
+  - [Authentication](#-authentication)
+  - [File Upload & Analysis](#-file-upload--analysis)
+  - [Analysis Management](#-analysis-management)
+- [Model Selection](#-model-selection)
+- [WebSocket Services](#-websocket-services)
+- [MinIO Integration](#-minio-integration)
+- [Database Schema](#-database-schema)
+- [Configuration](#-configuration)
+- [Deployment](#-deployment)
+- [Troubleshooting](#-troubleshooting)
 
 ---
 
