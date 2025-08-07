@@ -24,6 +24,7 @@ class AppConfig:
 
         # MinIO config
         self.minio_endpoint = os.getenv("MINIO_ENDPOINT")
+        self.minio_external_endpoint = os.getenv("MINIO_EXTERNAL_ENDPOINT", self.minio_endpoint)
         self.minio_access_key = os.getenv("MINIO_ACCESS_KEY")
         self.minio_secret_key = os.getenv("MINIO_SECRET_KEY")
         self.minio_secure = os.getenv("MINIO_SECURE", "false").lower() == "true"

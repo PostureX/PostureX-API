@@ -22,7 +22,7 @@ from src.services.analysis_bucket_minio import (
     save_pdf_report,
 )
 from src.services.minio import client as minio_client
-from src.services.minio import get_session_presigned_urls
+from src.services.minio import get_session_presigned_urls, get_external_presigned_url
 from src.services.summary_bucket_minio import (
     get_posture_insights,
     get_posture_insights_presigned_url,
@@ -168,8 +168,8 @@ class AnalysisController:
                     # Generate new presigned URL if not cached
                     try:
                         expires_delta = timedelta(hours=1)
-                        url = minio_client.presigned_get_object(
-                            ANALYSIS_BUCKET, file_path, expires=expires_delta
+                        url = get_external_presigned_url(
+                            ANALYSIS_BUCKET, file_path, expires_delta
                         )
                         
                         # Cache the URL
@@ -203,8 +203,8 @@ class AnalysisController:
             # Generate new presigned URL if not cached
             try:
                 expires_delta = timedelta(hours=1)
-                url = minio_client.presigned_get_object(
-                    ANALYSIS_BUCKET, file_path, expires=expires_delta
+                url = get_external_presigned_url(
+                    ANALYSIS_BUCKET, file_path, expires_delta
                 )
                 
                 # Cache the URL

@@ -3,7 +3,7 @@ import io
 from datetime import timedelta, datetime
 from typing import Dict, Any, List
 from minio.error import S3Error
-from src.services.minio import client as minio_client
+from src.services.minio import client as minio_client, get_external_presigned_url
 from src.services.analysis_bucket_minio import ensure_analysis_bucket, ANALYSIS_BUCKET
 from src.utils.cache import get_cached_presigned_url, cache_presigned_url
 
@@ -115,8 +115,8 @@ def get_posture_insights_presigned_url(user_id: str) -> str:
         # Generate new presigned URL if not cached
         try:
             expires_delta = timedelta(hours=1)
-            url = minio_client.presigned_get_object(
-                SUMMARY_BUCKET, file_path, expires=expires_delta
+            url = get_external_presigned_url(
+                SUMMARY_BUCKET, file_path, expires_delta
             )
             
             # Cache the URL
