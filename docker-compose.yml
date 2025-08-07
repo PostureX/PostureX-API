@@ -38,7 +38,7 @@ services:
       - "${MINIO_CONSOLE_PORT}:9001"
     volumes:
       - minio_data:/data
-    command: server /data
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${MINIO_PORT}/minio/health/live"]
       interval: 30s
