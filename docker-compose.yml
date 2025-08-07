@@ -21,6 +21,8 @@ services:
     restart: always
     env_file:
       - .env
+    networks:
+      - posturex-net
 
   minio:
     deploy:
@@ -45,6 +47,10 @@ services:
       timeout: 20s
       retries: 3
     restart: no
+    networks:
+      posturex-net:
+        aliases:
+          - ${MINIO_HOST}
 
   mc:
     container_name: mc
@@ -64,6 +70,8 @@ services:
     depends_on:
       - minio
       - flask-app
+    networks:
+      - posturex-net
 
   flask-app:
     deploy:
@@ -84,7 +92,12 @@ services:
     restart: always
     env_file:
       - .env
+    networks:
+      - posturex-net
 
 volumes:
   posturex_pgdata:
   minio_data:
+
+networks:
+  posturex-net:
