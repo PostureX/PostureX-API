@@ -184,3 +184,15 @@ docker compose up --build -d
 > ```bash
 > docker compose down
 > ```
+
+### Step 3: Modify Hosts File (important!)
+
+**Windows**
+
+Add `127.0.0.1 minio` to the `C:\Windows\System32\drivers\etc\hosts` file.
+
+**Unix**
+
+`sudo echo "127.0.0.1       minio" >> /etc/hosts`
+
+This is neccessary as the presigned URL is generated using an internal Docker network hostname (e.g., minio:9000), but the client attempts to access it using an external hostname or IP (e.g., localhost:9000 or the host's IP address). The signature is tied to the hostname used during signing.
