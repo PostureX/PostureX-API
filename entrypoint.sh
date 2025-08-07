@@ -18,10 +18,12 @@ uv pip install -r requirements.txt --no-cache-dir
 # Initialize the database only if migrations directory does not exist
 if [ ! -d "migrations" ]; then
     flask db init
-    flask create-schema
     flask db migrate -m "init table"
-    flask db upgrade
 fi
+
+
+flask create-schema
+flask db upgrade
 
 # Start app and bot
 python app.py & python bot.py
