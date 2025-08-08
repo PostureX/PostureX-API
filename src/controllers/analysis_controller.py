@@ -113,6 +113,7 @@ class AnalysisController:
             analysis = None
             if is_admin:
                 analysis = Analysis.query.filter_by(id=analysis_id).first()
+                user_id = analysis.user_id
             else:
                 analysis = Analysis.query.filter_by(
                     id=analysis_id, user_id=user_id
