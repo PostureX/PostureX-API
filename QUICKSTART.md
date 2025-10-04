@@ -31,7 +31,7 @@ Continue with the instructions below for your chosen deployment method.
 
 **Clone the repository:**
 ```bash
-git clone <repository-url>
+git clone https://github.com/PostureX/PostureX-API.git
 cd PostureX-API
 ```
 
