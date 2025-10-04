@@ -153,7 +153,14 @@ docker restart minio-server
 Before proceeding, ensure you have the WebSocket model server set up and running.  
 Refer to the [WebSocket setup guide](#4-set-up-websocket-model-server) above for details.
 
-### Step 1: Set up your environment file
+### Step 1: Clone the repository
+
+```bash
+git clone https://github.com/PostureX/PostureX-API.git
+cd PostureX-API
+```
+
+### Step 2: Set up your environment file
 
 Copy the example environment file and edit as needed:
 ```bash
@@ -169,7 +176,7 @@ Also make sure to set `WEBSOCKET_HOST` to the host endpoint of your websocket mo
 
 You may modify any of the environment variables if you know what you are doing, but its advised to keep to the defaults.
 
-### Step 2: Start all services with Docker Compose
+### Step 3: Start all services with Docker Compose
 
 Build and start all containers in detached mode:
 ```bash
@@ -185,7 +192,7 @@ docker compose up --build -d
 > docker compose down
 > ```
 
-### Step 3: Modify Hosts File (important!)
+### Step 4: Modify Hosts File (important!)
 
 **Windows**
 
@@ -197,6 +204,6 @@ Add `127.0.0.1 minio` to the `C:\Windows\System32\drivers\etc\hosts` file.
 
 This is neccessary as the presigned URL is generated using an internal Docker network hostname (e.g., minio:9000), but the client attempts to access it using an external hostname or IP (e.g., localhost:9000 or the host's IP address). The signature is tied to the hostname used during signing.
 
-### Step 4: Setup Frontend Website
+### Step 5: Setup Frontend Website
 
 Now to setup the frontend website you may refer [here](https://github.com/PostureX/PostureX-Web/blob/main/README.md).
