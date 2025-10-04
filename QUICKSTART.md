@@ -196,3 +196,7 @@ Add `127.0.0.1 minio` to the `C:\Windows\System32\drivers\etc\hosts` file.
 `sudo echo "127.0.0.1       minio" >> /etc/hosts`
 
 This is neccessary as the presigned URL is generated using an internal Docker network hostname (e.g., minio:9000), but the client attempts to access it using an external hostname or IP (e.g., localhost:9000 or the host's IP address). The signature is tied to the hostname used during signing.
+
+### Step 4: Setup Frontend Website
+
+Now to setup the frontend website you may refer [here](https://github.com/PostureX/PostureX-Web/blob/main/README.md).
