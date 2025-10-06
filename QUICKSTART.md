@@ -96,6 +96,8 @@ python app.py
     # Or update the model paths in websocket_config.py to match your server's model locations
     ```
 
+3. Change the [`WEBSOCKET_HOST`](https://github.com/PostureX/PostureX-API/blob/main/websocket_script_for_model_server/websocket_config.py#L2) constant variable in [`websocket_config.py`](https://github.com/PostureX/PostureX-API/blob/main/websocket_script_for_model_server/websocket_config.py) to the IP address of the server hosting the models.
+
 3. Start the WebSocket Model Server:
     ```bash
     python websocket_model_inference_service.py
